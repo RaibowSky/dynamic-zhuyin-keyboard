@@ -1,0 +1,16 @@
+.gradle/
+**/build/
+local.properties
+
+*.apk
+*.aab
+*.ap_
+
+*.iml
+.idea/
+
+tmp_video_frames/
+*.mov
+*.mp4
+
+*.log

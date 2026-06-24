@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <style name="Theme.IOSKeyboard" parent="Theme.AppCompat.DayNight.NoActionBar">
+        <item name="colorPrimary">#3B82F6</item>
+        <item name="colorPrimaryVariant">#2563EB</item>
+        <item name="colorOnPrimary">#FFFFFF</item>
+        <item name="colorSecondary">#10B981</item>
+        <item name="colorSecondaryVariant">#059669</item>
+        <item name="colorOnSecondary">#FFFFFF</item>
+        <item name="android:statusBarColor">#F3F4F6</item>
+        <item name="android:navigationBarColor">#F3F4F6</item>
+        <item name="android:windowLightStatusBar">true</item>
+    </style>
+</resources>

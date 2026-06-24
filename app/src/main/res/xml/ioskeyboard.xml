@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<input-method xmlns:android="http://schemas.android.com/apk/res/android"
+    android:settingsActivity="com.ioszhuyin.keyboard.MainActivity"
+    android:icon="@drawable/ic_launcher"
+    android:isDefault="false">
+
+    <subtype
+        android:label="@string/subtype_zh_TW_keyboard"
+        android:imeSubtypeLocale="zh_TW"
+        android:imeSubtypeMode="keyboard"
+        android:imeSubtypeExtraValue="default"
+        android:icon="@drawable/ic_launcher"/>
+
+</input-method>

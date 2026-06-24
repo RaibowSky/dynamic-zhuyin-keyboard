@@ -1,0 +1,67 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:orientation="vertical"
+    android:padding="32dp"
+    android:gravity="center"
+    android:background="#F3F4F6">
+
+    <TextView
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="iOS 注音鍵盤"
+        android:textSize="28sp"
+        android:textStyle="bold"
+        android:textColor="#1F2937"
+        android:layout_marginBottom="4dp"/>
+
+    <TextView
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="Taiwan Zhuyin Keyboard"
+        android:textSize="13sp"
+        android:textColor="#9CA3AF"
+        android:layout_marginBottom="28dp"/>
+
+    <ImageView
+        android:layout_width="80dp"
+        android:layout_height="80dp"
+        android:src="@drawable/ic_launcher"
+        android:layout_marginBottom="28dp"
+        android:contentDescription="Keyboard icon"/>
+
+    <TextView
+        android:id="@+id/tv_info"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:textSize="14sp"
+        android:textColor="#4B5563"
+        android:lineSpacingExtra="7dp"
+        android:gravity="left"
+        android:layout_marginBottom="28dp"
+        android:background="@drawable/info_box_bg"
+        android:padding="20dp"/>
+
+    <Button
+        android:id="@+id/btn_enable_keyboard"
+        android:layout_width="match_parent"
+        android:layout_height="54dp"
+        android:text="開啟鍵盤設定"
+        android:textSize="15sp"
+        android:textColor="#FFFFFF"
+        android:backgroundTint="#3B82F6"
+        android:layout_marginBottom="10dp"
+        android:textAllCaps="false"/>
+
+    <Button
+        android:id="@+id/btn_switch_keyboard"
+        android:layout_width="match_parent"
+        android:layout_height="54dp"
+        android:text="切換鍵盤"
+        android:textSize="15sp"
+        android:textColor="#FFFFFF"
+        android:backgroundTint="#10B981"
+        android:textAllCaps="false"/>
+
+</LinearLayout>

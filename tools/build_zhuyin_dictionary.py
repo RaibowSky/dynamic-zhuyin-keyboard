@@ -1,0 +1,205 @@
+import gzip
+import re
+from collections import OrderedDict
+from pathlib import Path
+
+
+TONE = {"1": "ˉ", "2": "ˊ", "3": "ˇ", "4": "ˋ", "5": "˙", "0": "˙"}
+INITIALS = OrderedDict(
+    [
+        ("zh", "ㄓ"),
+        ("ch", "ㄔ"),
+        ("sh", "ㄕ"),
+        ("b", "ㄅ"),
+        ("p", "ㄆ"),
+        ("m", "ㄇ"),
+        ("f", "ㄈ"),
+        ("d", "ㄉ"),
+        ("t", "ㄊ"),
+        ("n", "ㄋ"),
+        ("l", "ㄌ"),
+        ("g", "ㄍ"),
+        ("k", "ㄎ"),
+        ("h", "ㄏ"),
+        ("j", "ㄐ"),
+        ("q", "ㄑ"),
+        ("x", "ㄒ"),
+        ("r", "ㄖ"),
+        ("z", "ㄗ"),
+        ("c", "ㄘ"),
+        ("s", "ㄙ"),
+    ]
+)
+
+FINALS = {
+    "": "",
+    "a": "ㄚ",
+    "o": "ㄛ",
+    "e": "ㄜ",
+    "ê": "ㄝ",
+    "eh": "ㄝ",
+    "ai": "ㄞ",
+    "ei": "ㄟ",
+    "ao": "ㄠ",
+    "ou": "ㄡ",
+    "an": "ㄢ",
+    "en": "ㄣ",
+    "ang": "ㄤ",
+    "eng": "ㄥ",
+    "er": "ㄦ",
+    "i": "ㄧ",
+    "ia": "ㄧㄚ",
+    "ie": "ㄧㄝ",
+    "iao": "ㄧㄠ",
+    "iu": "ㄧㄡ",
+    "ian": "ㄧㄢ",
+    "in": "ㄧㄣ",
+    "iang": "ㄧㄤ",
+    "ing": "ㄧㄥ",
+    "u": "ㄨ",
+    "ua": "ㄨㄚ",
+    "uo": "ㄨㄛ",
+    "uai": "ㄨㄞ",
+    "ui": "ㄨㄟ",
+    "uan": "ㄨㄢ",
+    "un": "ㄨㄣ",
+    "uang": "ㄨㄤ",
+    "ong": "ㄨㄥ",
+    "ueng": "ㄨㄥ",
+    "v": "ㄩ",
+    "ve": "ㄩㄝ",
+    "van": "ㄩㄢ",
+    "vn": "ㄩㄣ",
+    "iong": "ㄩㄥ",
+}
+
+ZERO_INITIAL = {
+    "yi": "ㄧ",
+    "ya": "ㄧㄚ",
+    "yo": "ㄧㄛ",
+    "ye": "ㄧㄝ",
+    "yai": "ㄧㄞ",
+    "yao": "ㄧㄠ",
+    "you": "ㄧㄡ",
+    "yan": "ㄧㄢ",
+    "yin": "ㄧㄣ",
+    "yang": "ㄧㄤ",
+    "ying": "ㄧㄥ",
+    "wu": "ㄨ",
+    "wa": "ㄨㄚ",
+    "wo": "ㄨㄛ",
+    "wai": "ㄨㄞ",
+    "wei": "ㄨㄟ",
+    "wan": "ㄨㄢ",
+    "wen": "ㄨㄣ",
+    "wang": "ㄨㄤ",
+    "weng": "ㄨㄥ",
+    "yu": "ㄩ",
+    "yue": "ㄩㄝ",
+    "yuan": "ㄩㄢ",
+    "yun": "ㄩㄣ",
+    "yong": "ㄩㄥ",
+}
+
+LINE_RE = re.compile(r"^(\S+)\s+(\S+)\s+\[([^\]]+)\]\s+/.*/$")
+PINYIN_RE = re.compile(r"^([a-zA-ZüÜ:êÊ]+)([0-5])$")
+
+
+def convert_syllable(raw: str) -> str | None:
+    raw = raw.strip().lower().replace("u:", "v").replace("ü", "v")
+    match = PINYIN_RE.match(raw)
+    if not match:
+        return None
+
+    body, tone = match.groups()
+    if body in ZERO_INITIAL:
+        return ZERO_INITIAL[body] + TONE[tone]
+
+    initial = ""
+    initial_zhuyin = ""
+    for candidate, zhuyin in INITIALS.items():
+        if body.startswith(candidate):
+            initial = candidate
+            initial_zhuyin = zhuyin
+            break
+    final = body[len(initial) :]
+
+    if initial in {"zh", "ch", "sh", "r", "z", "c", "s"} and final == "i":
+        final = ""
+    elif initial in {"j", "q", "x"} and final.startswith("u"):
+        final = "v" + final[1:]
+    elif initial in {"n", "l"}:
+        final = final.replace("v", "v")
+
+    final_zhuyin = FINALS.get(final)
+    if final_zhuyin is None:
+        return None
+    return initial_zhuyin + final_zhuyin + TONE[tone]
+
+
+def strip_tones(zhuyin: str) -> str:
+    return zhuyin.translate(str.maketrans("", "", "ˉ˙ˊˇˋ"))
+
+
+def append_unique(bucket: dict[str, list[str]], key: str, value: str) -> None:
+    if not key or not value:
+        return
+    values = bucket.setdefault(key, [])
+    if value not in values:
+        values.append(value)
+
+
+def main() -> None:
+    root = Path(__file__).resolve().parents[1]
+    source = root / "cedict.txt.gz"
+    target = root / "app" / "src" / "main" / "assets" / "zhuyin_cedict.tsv"
+    license_file = root / "app" / "src" / "main" / "assets" / "zhuyin_cedict_LICENSE.txt"
+
+    entries: dict[str, list[str]] = {}
+    parsed = 0
+    skipped = 0
+    with gzip.open(source, "rt", encoding="utf-8") as f:
+        for line in f:
+            if not line or line.startswith("#"):
+                continue
+            match = LINE_RE.match(line.rstrip("\n"))
+            if not match:
+                skipped += 1
+                continue
+            traditional, _simplified, pinyin = match.groups()
+            syllables = []
+            for token in pinyin.split():
+                converted = convert_syllable(token)
+                if converted is None:
+                    syllables = []
+                    break
+                syllables.append(converted)
+            if not syllables:
+                skipped += 1
+                continue
+
+            toned_key = "".join(syllables)
+            base_key = strip_tones(toned_key)
+            append_unique(entries, toned_key, traditional)
+            append_unique(entries, base_key, traditional)
+            parsed += 1
+
+    with target.open("w", encoding="utf-8", newline="\n") as f:
+        f.write("# CC-CEDICT converted to Zhuyin by tools/build_zhuyin_dictionary.py\n")
+        f.write("# key<TAB>candidate1 candidate2 ...\n")
+        for key in sorted(entries.keys(), key=lambda k: (len(k), k)):
+            f.write(f"{key}\t{' '.join(entries[key][:128])}\n")
+
+    license_file.write_text(
+        "Source: CC-CEDICT from MDBG Chinese Dictionary\n"
+        "Download: https://www.mdbg.net/chinese/dictionary?page=cc-cedict\n"
+        "License: Creative Commons Attribution-ShareAlike 4.0 International (CC BY-SA 4.0)\n"
+        "Generated by tools/build_zhuyin_dictionary.py from cedict.txt.gz.\n",
+        encoding="utf-8",
+        newline="\n",
+    )
+    print(f"parsed={parsed} skipped={skipped} keys={len(entries)} target={target}")
+
+
+if __name__ == "__main__":
+    main()
