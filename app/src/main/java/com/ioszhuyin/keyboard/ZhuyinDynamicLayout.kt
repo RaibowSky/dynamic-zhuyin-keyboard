@@ -11,7 +11,7 @@ object ZhuyinDynamicLayout {
     val INITIAL_PAGE_ROWS: List<List<String>> = listOf(
         listOf("ㄅ", "ㄆ", "ㄇ", "ㄈ", "ㄉ", "ㄊ", "ㄋ", "ㄌ"),
         listOf("ㄍ", "ㄎ", "ㄏ", "ㄐ", "ㄑ", "ㄒ", "ㄧ", "ㄨ", "ㄩ"),
-        listOf("ㄓ", "ㄔ", "ㄕ", "ㄖ", "ㄗ", "ㄘ", "ㄙ")
+        listOf("⇧", "ㄓ", "ㄔ", "ㄕ", "ㄖ", "ㄗ", "ㄘ", "ㄙ", "⌫")
     )
 
     val FINAL_PAGE_ROWS: List<List<String>> = listOf(

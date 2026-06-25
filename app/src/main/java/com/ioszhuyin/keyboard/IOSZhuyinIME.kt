@@ -143,7 +143,7 @@ class IOSZhuyinIME : InputMethodService() {
 
     private fun onZhuyinKeyPressed(key: String) {
         if (key == "⇧") {
-            showFinalPage = false
+            showFinalPage = !showFinalPage
             syncKeyboardView()
             vibrateLight()
             return

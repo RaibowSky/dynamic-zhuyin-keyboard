@@ -187,9 +187,13 @@ class ZhuyinKeyboardView @JvmOverloads constructor(
         val isTone: Boolean = false,  // 聲調按鈕 (˙ ˊ ˇ ˋ) 觸發 onToneSelected, 不走 onKeyPress
         val isToggle: Boolean = false  // 上箭頭 (切換聲母頁), 不走 onKeyPress
     )
+    private data class KeySpec(
+        val label: String,
+        val slot: Float,
+        val span: Float = 1f
+    )
     private data class KeyRowSpec(
-        val keys: List<String>,
-        val startSlot: Int = 0
+        val keys: List<KeySpec>
     )
     private data class ControlKey(
         val label: String,
@@ -260,13 +264,15 @@ class ZhuyinKeyboardView @JvmOverloads constructor(
             val n = columnCountForCurrentMode()
             val totalSpacing = keySpacing * (n + 1)
             val keyW = (width - 2 * padX - totalSpacing) / n
-            for ((keyIndex, sym) in row.keys.withIndex()) {
-                val slot = row.startSlot + keyIndex
+            for (key in row.keys) {
+                val slot = key.slot
+                val sym = key.label
                 val x = padX + keySpacing + slot * (keyW + keySpacing)
-                val rect = RectF(x, y, x + keyW, y + keyH)
+                val spanSpacing = keySpacing * (key.span - 1f).coerceAtLeast(0f)
+                val rect = RectF(x, y, x + keyW * key.span + spanSpacing, y + keyH)
                 val isTone = mode == Mode.ZHUYIN && sym in ZhuyinDynamicLayout.TONES
                 val isToggle = mode == Mode.ZHUYIN && sym == "⇧"
-                zhuyinKeys.add(ZhuyinKey(sym, r, slot, rect, isTone, isToggle))
+                zhuyinKeys.add(ZhuyinKey(sym, r, slot.toInt(), rect, isTone, isToggle))
             }
             y += keyH + rowSpacing
         }
@@ -284,9 +290,9 @@ class ZhuyinKeyboardView @JvmOverloads constructor(
                 listOf("ABC", "123", "空白", "選定")
             )
             mode == Mode.ZHUYIN -> Pair(
-                listOf(ControlAction.TOGGLE_FINALS, ControlAction.ENGLISH, ControlAction.NUMBER,
-                    ControlAction.SPACE, ControlAction.RETURN, ControlAction.BACKSPACE),
-                listOf("韻", "ABC", "123", "空白", "換行", "⌫")
+                listOf(ControlAction.ENGLISH, ControlAction.NUMBER,
+                    ControlAction.SPACE, ControlAction.RETURN),
+                listOf("ABC", "123", "空白", "換行")
             )
             mode == Mode.ENGLISH -> Pair(
                 listOf(ControlAction.TOGGLE_FINALS, ControlAction.NUMBER, ControlAction.SYMBOL,
@@ -308,7 +314,7 @@ class ZhuyinKeyboardView @JvmOverloads constructor(
                 listOf("空白", "換行", "⌫")
             )
         }
-        val weights = if (mode == Mode.ZHUYIN && showFinalPage) {
+        val weights = if (mode == Mode.ZHUYIN) {
             listOf(1f, 1f, 4f, 1.5f)  // 4 鍵: ABC / 123 / 空白(寬) / 選定
         } else {
             listOf(1.3f, 1.0f, 1.2f, 4.4f, 1.1f, 1.3f)  // 6 鍵: 正常控制列
@@ -346,25 +352,37 @@ class ZhuyinKeyboardView @JvmOverloads constructor(
                 ZhuyinDynamicLayout.INITIAL_PAGE_ROWS
             }
             listOf(
-                KeyRowSpec(sourceRows[0], startSlot = 0),
-                KeyRowSpec(sourceRows[1], startSlot = 0),
-                KeyRowSpec(sourceRows[2], startSlot = 1)
+                rowSpec(sourceRows[0], startSlot = 0),
+                rowSpec(sourceRows[1], startSlot = 0),
+                if (showFinalPage) toneRowSpec(sourceRows[2]) else rowSpec(sourceRows[2], startSlot = 0)
             )
         }
         Mode.ENGLISH -> listOf(
-            KeyRowSpec(ENGLISH_R1, startSlot = 0),
-            KeyRowSpec(ENGLISH_R2, startSlot = 1),
-            KeyRowSpec(ENGLISH_R3, startSlot = 2)
+            rowSpec(ENGLISH_R1, startSlot = 0),
+            rowSpec(ENGLISH_R2, startSlot = 1),
+            rowSpec(ENGLISH_R3, startSlot = 2)
         )
         Mode.NUMBER -> listOf(
-            KeyRowSpec(NUMBER_R1, startSlot = 0),
-            KeyRowSpec(NUMBER_R2, startSlot = 0),
-            KeyRowSpec(NUMBER_R3, startSlot = 0)
+            rowSpec(NUMBER_R1, startSlot = 0),
+            rowSpec(NUMBER_R2, startSlot = 0),
+            rowSpec(NUMBER_R3, startSlot = 0)
         )
         Mode.SYMBOL -> listOf(
-            KeyRowSpec(SYMBOL_R1, startSlot = 0),
-            KeyRowSpec(SYMBOL_R2, startSlot = 0),
-            KeyRowSpec(SYMBOL_R3, startSlot = 0)
+            rowSpec(SYMBOL_R1, startSlot = 0),
+            rowSpec(SYMBOL_R2, startSlot = 0),
+            rowSpec(SYMBOL_R3, startSlot = 0)
+        )
+    }
+
+    private fun rowSpec(labels: List<String>, startSlot: Int): KeyRowSpec =
+        KeyRowSpec(labels.mapIndexed { index, label -> KeySpec(label, (startSlot + index).toFloat()) })
+
+    private fun toneRowSpec(labels: List<String>): KeyRowSpec {
+        val tones = labels.filter { it in ZhuyinDynamicLayout.TONES }
+        return KeyRowSpec(
+            listOf(KeySpec("⇧", 0f)) +
+                tones.mapIndexed { index, tone -> KeySpec(tone, 1.45f + index * 1.5f, 1.25f) } +
+                listOf(KeySpec("⌫", 8f))
         )
     }
 
