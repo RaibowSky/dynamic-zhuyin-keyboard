@@ -2,8 +2,11 @@
 
 Android input method prototype for an iOS-style dynamic Zhuyin keyboard.
 
-This project is not affiliated with, endorsed by, or sponsored by Apple, Sogou,
-the Ministry of Education of Taiwan, or the maintainers of CC-CEDICT.
+This project is an independently developed Android Zhuyin input method.
+
+Except for third-party resources explicitly documented in this README and
+`NOTICE.md`, this project does not include third-party source code, proprietary
+dictionaries, trademark assets, or other copyrighted materials.
 
 ## Current Features
 
@@ -28,19 +31,18 @@ and license attribution.
 
 ## References
 
-The keyboard behavior and layout were developed from observation and comparison
-of existing input methods. These references were used for behavioral study only;
-their source code, visual assets, proprietary dictionaries, and bundled data are
-not copied into this repository unless explicitly documented in `NOTICE.md`.
+This project was implemented independently.
 
-- Apple iOS Zhuyin keyboard behavior, observed from user-provided screen
-  recording and manual testing.
-- Sogou Zhuyin/Input Method behavior, used as a comparison reference for IME
-  interaction concepts.
-- Taiwan Ministry of Education dictionary resources, used during earlier
-  experimentation/checking. No Ministry of Education dictionary dump is bundled
-  in the current repository state.
-- CC-CEDICT, used as the current bundled dictionary data source.
+During development, several publicly available Chinese input methods and
+linguistic resources were consulted to understand general input workflows,
+keyboard interaction patterns, and Zhuyin conventions.
+
+Unless explicitly documented in `NOTICE.md`, this repository does not contain
+third-party source code, proprietary dictionaries, visual assets, or other
+copyrighted materials.
+
+The bundled dictionary currently included in this repository is generated only
+from CC-CEDICT as described above.
 
 ## Licensing
 
