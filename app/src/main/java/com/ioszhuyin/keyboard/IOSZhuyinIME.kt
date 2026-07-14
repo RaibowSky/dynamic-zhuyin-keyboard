@@ -3,8 +3,10 @@ package com.ioszhuyin.keyboard
 import android.content.Context
 import android.graphics.Typeface
 import android.inputmethodservice.InputMethodService
+import android.os.Build
 import android.os.Handler
 import android.os.Looper
+import android.os.VibrationEffect
 import android.view.KeyEvent
 import android.view.View
 import android.view.inputmethod.EditorInfo
@@ -29,6 +31,7 @@ class IOSZhuyinIME : InputMethodService() {
     private val freq = mutableMapOf<String, Int>()
     private val PREFS_NAME = "zhuyin_freq"
     private val FREQ_KEY = "freq_data"
+    private var learningAllowed = false
 
     private data class ZhuyinSegment(
         val text: String,
@@ -38,6 +41,7 @@ class IOSZhuyinIME : InputMethodService() {
     )
 
     private fun loadFreq() {
+        freq.clear()
         val prefs = getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
         val raw = prefs.getString(FREQ_KEY, "") ?: ""
         if (raw.isNotEmpty()) {
@@ -49,17 +53,20 @@ class IOSZhuyinIME : InputMethodService() {
     }
 
     private fun saveFreq() {
+        if (!learningAllowed) return
         getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE).edit()
             .putString(FREQ_KEY, freq.entries.joinToString("|") { "${it.key}:${it.value}" })
             .apply()
     }
 
     private fun wordSelected(word: String) {
+        if (!learningAllowed) return
         freq[word] = (freq[word] ?: 0) + 1
         saveFreq()
     }
 
     private fun getSortedCandidates(raw: String): List<String> {
+        if (!learningAllowed) return candidatesForKey(raw)
         val userCandidates = userCandidatesForKey(raw)
         val userCandidateSet = userCandidates.toSet()
         val dict = candidatesForKey(raw)
@@ -69,7 +76,7 @@ class IOSZhuyinIME : InputMethodService() {
     }
 
     private fun userCandidatesForKey(raw: String): List<String> {
-        if (!::userDictionaryStore.isInitialized) return emptyList()
+        if (!learningAllowed || !::userDictionaryStore.isInitialized) return emptyList()
         return userDictionaryStore.getCandidates(lookupVariants(raw))
     }
 
@@ -85,15 +92,21 @@ class IOSZhuyinIME : InputMethodService() {
     }
 
     private val mainHandler = Handler(Looper.getMainLooper())
-    private var backspaceRunnable: Runnable? = null
-    private var isBackspaceHeld = false
+    private val backspaceRepeater = BackspaceRepeater(
+        deleteOnce = { handleBackspace() },
+        schedule = { task, delay ->
+            mainHandler.postDelayed(task, delay)
+        },
+        cancel = { task ->
+            mainHandler.removeCallbacks(task)
+        }
+    )
 
     override fun onCreate() {
         super.onCreate()
         @Suppress("DEPRECATION")
         vibrator = getSystemService(VIBRATOR_SERVICE) as? android.os.Vibrator
         userDictionaryStore = UserDictionaryStore(this)
-        loadFreq()
         ZhuyinDictionary.initialize(this)
         bopomofoTypeface = try {
             val outFile = File(cacheDir, "bopomofo.ttf")
@@ -109,8 +122,11 @@ class IOSZhuyinIME : InputMethodService() {
     }
 
     override fun onDestroy() {
-        super.onDestroy()
+        stopBackspaceRepeat()
         saveFreq()
+        if (::userDictionaryStore.isInitialized) userDictionaryStore.close()
+        keyboardView = null
+        super.onDestroy()
     }
 
     override fun onCreateCandidatesView(): View = LinearLayout(this)
@@ -336,23 +352,15 @@ class IOSZhuyinIME : InputMethodService() {
     }
 
     private fun handleBackspaceDown() {
-        isBackspaceHeld = true
-        handleBackspace()
-        backspaceRunnable?.let { mainHandler.removeCallbacks(it) }
-        backspaceRunnable = object : Runnable {
-            override fun run() {
-                if (!isBackspaceHeld) return
-                handleBackspace()
-                mainHandler.postDelayed(this, 80L)
-            }
-        }
-        mainHandler.postDelayed(backspaceRunnable!!, 400L)
+        backspaceRepeater.press()
     }
 
     private fun handleBackspaceUp() {
-        isBackspaceHeld = false
-        backspaceRunnable?.let { mainHandler.removeCallbacks(it) }
-        backspaceRunnable = null
+        stopBackspaceRepeat()
+    }
+
+    private fun stopBackspaceRepeat() {
+        backspaceRepeater.release()
     }
 
     private fun handleBackspace() {
@@ -361,7 +369,18 @@ class IOSZhuyinIME : InputMethodService() {
             recomputePageFromComposing()
             refreshCandidates(resetSelection = true)
         } else {
-            currentInputConnection?.deleteSurroundingText(1, 0)
+            currentInputConnection?.let { ic ->
+                val beforeCursor = ic.getTextBeforeCursor(MAX_BACKSPACE_CONTEXT, 0)
+                val codeUnits = UnicodeBackspace.codeUnitsToDelete(beforeCursor)
+                val deleted = when {
+                    codeUnits > 0 -> ic.deleteSurroundingText(codeUnits, 0)
+                    else -> ic.deleteSurroundingTextInCodePoints(1, 0)
+                }
+                if (!deleted) {
+                    ic.sendKeyEvent(KeyEvent(KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_DEL))
+                    ic.sendKeyEvent(KeyEvent(KeyEvent.ACTION_UP, KeyEvent.KEYCODE_DEL))
+                }
+            }
             syncKeyboardView()
         }
         vibrateLight()
@@ -389,8 +408,20 @@ class IOSZhuyinIME : InputMethodService() {
             return
         }
         val ic = currentInputConnection ?: return
-        ic.sendKeyEvent(KeyEvent(KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_ENTER))
-        ic.sendKeyEvent(KeyEvent(KeyEvent.ACTION_UP, KeyEvent.KEYCODE_ENTER))
+        val info = currentInputEditorInfo
+        val actionPlan = ImeBehavior.editorActionPlan(
+            hasCustomActionLabel = info?.actionLabel != null,
+            imeOptions = info?.imeOptions ?: EditorInfo.IME_ACTION_NONE
+        )
+        val handled = when (actionPlan) {
+            EditorActionPlan.CUSTOM_ACTION -> ic.performEditorAction(info?.actionId ?: 0)
+            EditorActionPlan.DEFAULT_ACTION -> sendDefaultEditorAction(true)
+            EditorActionPlan.INSERT_NEWLINE -> false
+        }
+        if (!handled) {
+            ic.sendKeyEvent(KeyEvent(KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_ENTER))
+            ic.sendKeyEvent(KeyEvent(KeyEvent.ACTION_UP, KeyEvent.KEYCODE_ENTER))
+        }
         vibrateLight()
     }
 
@@ -453,22 +484,52 @@ class IOSZhuyinIME : InputMethodService() {
 
     private fun vibrateLight() {
         try {
-            @Suppress("DEPRECATION")
-            vibrator?.vibrate(android.os.VibrationEffect.createOneShot(8, android.os.VibrationEffect.DEFAULT_AMPLITUDE))
+            val currentVibrator = vibrator ?: return
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                currentVibrator.vibrate(
+                    VibrationEffect.createOneShot(8L, VibrationEffect.DEFAULT_AMPLITUDE)
+                )
+            } else {
+                @Suppress("DEPRECATION")
+                currentVibrator.vibrate(8L)
+            }
         } catch (e: Exception) {
         }
     }
 
+    override fun onStartInput(attribute: EditorInfo?, restarting: Boolean) {
+        stopBackspaceRepeat()
+        super.onStartInput(attribute, restarting)
+        learningAllowed = ImeBehavior.allowsPersonalizedLearning(
+            inputType = attribute?.inputType,
+            imeOptions = attribute?.imeOptions
+        )
+        if (learningAllowed) loadFreq()
+    }
+
     override fun onStartInputView(info: EditorInfo?, restarting: Boolean) {
+        stopBackspaceRepeat()
         super.onStartInputView(info, restarting)
-        loadFreq()
         resetToInitial()
     }
 
     override fun onFinishInputView(finishingInput: Boolean) {
-        super.onFinishInputView(finishingInput)
+        stopBackspaceRepeat()
         saveFreq()
         resetToInitial()
+        super.onFinishInputView(finishingInput)
+    }
+
+    override fun onFinishInput() {
+        stopBackspaceRepeat()
+        saveFreq()
+        learningAllowed = false
+        super.onFinishInput()
+    }
+
+    override fun onWindowHidden() {
+        stopBackspaceRepeat()
+        super.onWindowHidden()
     }
 
     override fun onKeyDown(keyCode: Int, event: KeyEvent): Boolean = when (keyCode) {
@@ -541,6 +602,7 @@ class IOSZhuyinIME : InputMethodService() {
     companion object {
         private const val PAGE_SIZE = 9
         private const val MAX_SYLLABLE_LEN = 3
+        private const val MAX_BACKSPACE_CONTEXT = 64
         private const val FIRST_TONE = "ˉ"
         private const val NEUTRAL_TONE = "˙"
         private val TONE_CHARS = setOf('ˉ', '˙', 'ˊ', 'ˇ', 'ˋ')

@@ -199,6 +199,14 @@ class ZhuyinKeyboardView @JvmOverloads constructor(
     }
 
     override fun onDetachedFromWindow() {
+        if (isBackspaceDown) {
+            onBackspaceRelease?.invoke()
+        }
+        pressedKeyIdx = -1
+        pressedControlIdx = -1
+        pressedToneIdx = -1
+        downTarget = null
+        isBackspaceDown = false
         metricsPrefs.unregisterOnSharedPreferenceChangeListener(metricsListener)
         super.onDetachedFromWindow()
     }
