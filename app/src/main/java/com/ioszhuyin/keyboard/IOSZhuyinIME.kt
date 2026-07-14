@@ -277,7 +277,10 @@ class IOSZhuyinIME : InputMethodService() {
         vibrateLight()
     }
 
-    private fun commitSelectedCandidate(candidateOverride: String? = null): Boolean {
+    private fun commitSelectedCandidate(
+        candidateOverride: String? = null,
+        provideFeedback: Boolean = true
+    ): Boolean {
         val ic = currentInputConnection ?: return false
         if (allCandidates.isEmpty()) return false
 
@@ -299,7 +302,7 @@ class IOSZhuyinIME : InputMethodService() {
         composingText.append(remaining)
         recomputePageFromComposing()
         refreshCandidates(resetSelection = true)
-        vibrateLight()
+        if (provideFeedback) vibrateLight()
         return true
     }
 
@@ -451,11 +454,25 @@ class IOSZhuyinIME : InputMethodService() {
         imm.showInputMethodPicker()
     }
 
-    private fun resetToInitial(clearEditorComposition: Boolean = false) {
-        if (clearEditorComposition && composingText.isNotEmpty()) {
-            currentInputConnection?.setComposingText("", 1)
-            currentInputConnection?.finishComposingText()
+    private fun finishComposingForLifecycle() {
+        val ic = currentInputConnection ?: return
+        while (composingText.isNotEmpty()) {
+            val previousLength = composingText.length
+            if (
+                allCandidates.isNotEmpty() &&
+                commitSelectedCandidate(provideFeedback = false) &&
+                composingText.length < previousLength
+            ) {
+                continue
+            }
+
+            ic.commitText(composingText.toString(), 1)
+            composingText.clear()
+            break
         }
+    }
+
+    private fun resetToInitial() {
         composingText.clear()
         allCandidates = emptyList()
         selectedCandidateIndex = -1
@@ -500,24 +517,29 @@ class IOSZhuyinIME : InputMethodService() {
         stopBackspaceRepeat()
         super.onStartInputView(info, restarting)
         keyboardView?.setReturnKeyLabel(editorReturnKeyLabel)
-        resetToInitial(clearEditorComposition = true)
+        resetToInitial()
         applyEditorKeyboardMode()
     }
 
     override fun onFinishInputView(finishingInput: Boolean) {
         stopBackspaceRepeat()
-        resetToInitial(clearEditorComposition = true)
+        finishComposingForLifecycle()
+        resetToInitial()
         super.onFinishInputView(finishingInput)
     }
 
     override fun onFinishInput() {
         stopBackspaceRepeat()
+        finishComposingForLifecycle()
+        resetToInitial()
         personalizationAllowed = false
         super.onFinishInput()
     }
 
     override fun onWindowHidden() {
         stopBackspaceRepeat()
+        finishComposingForLifecycle()
+        resetToInitial()
         super.onWindowHidden()
     }
 
