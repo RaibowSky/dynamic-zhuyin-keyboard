@@ -119,6 +119,20 @@ internal object CandidatePanelBehavior {
     }
 }
 
+internal object IosAuxiliaryLayout {
+    val NUMBER_ROWS: List<List<String>> = listOf(
+        listOf("1", "2", "3", "4", "5", "6", "7", "8", "9", "0"),
+        listOf("-", "/", ":", ";", "(", ")", "$", "&", "@", "\""),
+        listOf("#+=", ".", ",", "?", "!", "'", "⌫")
+    )
+
+    val SYMBOL_ROWS: List<List<String>> = listOf(
+        listOf("[", "]", "{", "}", "#", "%", "^", "*", "+", "="),
+        listOf("_", "\\", "|", "~", "<", ">", "€", "£", "¥", "•"),
+        listOf("123", ".", ",", "?", "!", "'", "⌫")
+    )
+}
+
 internal object CompositionEditing {
     fun remainingAfterSelection(raw: String, start: Int, end: Int): String {
         val safeStart = start.coerceIn(0, raw.length)

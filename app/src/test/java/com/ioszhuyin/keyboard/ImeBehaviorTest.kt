@@ -209,6 +209,26 @@ class ImeBehaviorTest {
     }
 
     @Test
+    fun auxiliaryPagesMatchIosNumberAndSymbolRows() {
+        assertEquals(
+            listOf(
+                listOf("1", "2", "3", "4", "5", "6", "7", "8", "9", "0"),
+                listOf("-", "/", ":", ";", "(", ")", "$", "&", "@", "\""),
+                listOf("#+=", ".", ",", "?", "!", "'", "⌫")
+            ),
+            IosAuxiliaryLayout.NUMBER_ROWS
+        )
+        assertEquals(
+            listOf(
+                listOf("[", "]", "{", "}", "#", "%", "^", "*", "+", "="),
+                listOf("_", "\\", "|", "~", "<", ">", "€", "£", "¥", "•"),
+                listOf("123", ".", ",", "?", "!", "'", "⌫")
+            ),
+            IosAuxiliaryLayout.SYMBOL_ROWS
+        )
+    }
+
+    @Test
     fun unicodeBackspaceDeletesWholeUserPerceivedCharacter() {
         assertEquals(1, UnicodeBackspace.codeUnitsToDelete("注"))
         assertEquals(2, UnicodeBackspace.codeUnitsToDelete("A😀"))

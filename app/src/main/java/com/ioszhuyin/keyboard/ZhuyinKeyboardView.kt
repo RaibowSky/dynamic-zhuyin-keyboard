@@ -91,21 +91,6 @@ class ZhuyinKeyboardView @JvmOverloads constructor(
     private val ENGLISH_R2 = listOf("a", "s", "d", "f", "g", "h", "j", "k", "l")
     private val ENGLISH_R3 = listOf("z", "x", "c", "v", "b", "n", "m")
 
-    // 數字/符號的固定 layout (3 列 8 鍵)
-    // R1: 1 2 3 4 5 6 7 8
-    // R2: 9 0 - / : ; ( )
-    // R3: . , ? ! ' " @ #
-    private val NUMBER_R1 = listOf("1", "2", "3", "4", "5", "6", "7", "8")
-    private val NUMBER_R2 = listOf("9", "0", "-", "/", ":", ";", "(", ")")
-    private val NUMBER_R3 = listOf(".", ",", "?", "!", "'", "\"", "@", "#")
-
-    // 符號版
-    private val SYMBOL_R1 = listOf("[", "]", "{", "}", "#", "%", "^", "*")
-    private val SYMBOL_R2 = listOf("+", "=", "_", "\\", "|", "~", "<", ">")
-    private val SYMBOL_R3 = listOf("€", "£", "¥", "•", "、", "。", "《", "》")
-
-    private val SYMBOL_R1B = listOf("1", "2", "3", "4", "5", "6", "7", "8")  // 占位
-
     // ============================================================
     // 公開狀態
     // ============================================================
@@ -167,7 +152,6 @@ class ZhuyinKeyboardView @JvmOverloads constructor(
     // Paints
     // ============================================================
     private val paintKeyText = Paint(Paint.ANTI_ALIAS_FLAG or Paint.SUBPIXEL_TEXT_FLAG)
-    private val paintKeyHint = Paint(Paint.ANTI_ALIAS_FLAG)  // ㄧ/ㄨ/ㄩ 雙重身份提示
     private val paintKeyBg = Paint(Paint.ANTI_ALIAS_FLAG)
     private val paintKeyBgDisabled = Paint(Paint.ANTI_ALIAS_FLAG)
     private val paintKeyStroke = Paint(Paint.ANTI_ALIAS_FLAG)
@@ -219,10 +203,6 @@ class ZhuyinKeyboardView @JvmOverloads constructor(
         paintToneBg.color = colorToneBg
         paintToneText.color = Color.WHITE
         paintToneText.textAlign = Paint.Align.CENTER
-        paintKeyHint.color = Color.parseColor("#9CA3AF")  // gray-400
-        paintKeyHint.textAlign = Paint.Align.CENTER
-        paintKeyHint.textSize = dp(metrics.hintFontSize)
-
         // Visible keys are always active, like Apple's dynamic Zhuyin keyboard.
     }
 
@@ -431,25 +411,19 @@ class ZhuyinKeyboardView @JvmOverloads constructor(
                     ControlAction.SPACE, ControlAction.RETURN),
                 listOf("123", "☺", "space", returnKeyLabel)
             )
-            mode == Mode.NUMBER && !zhuyinModeAllowed -> Pair(
-                listOf(ControlAction.ENGLISH, ControlAction.SYMBOL, ControlAction.EMOJI,
-                    ControlAction.SPACE, ControlAction.RETURN, ControlAction.BACKSPACE),
-                listOf("ABC", "#+=", "☺", "空白", returnKeyLabel, "⌫")
-            )
-            mode == Mode.NUMBER -> Pair(
-                listOf(ControlAction.TOGGLE_FINALS, ControlAction.SYMBOL, ControlAction.EMOJI,
-                    ControlAction.SPACE, ControlAction.RETURN, ControlAction.BACKSPACE),
-                listOf("注", "#+=", "☺", "空白", returnKeyLabel, "⌫")
-            )
-            mode == Mode.SYMBOL && !zhuyinModeAllowed -> Pair(
-                listOf(ControlAction.ENGLISH, ControlAction.NUMBER, ControlAction.EMOJI,
-                    ControlAction.SPACE, ControlAction.RETURN, ControlAction.BACKSPACE),
-                listOf("ABC", "123", "☺", "空白", returnKeyLabel, "⌫")
-            )
-            mode == Mode.SYMBOL -> Pair(
-                listOf(ControlAction.TOGGLE_FINALS, ControlAction.NUMBER, ControlAction.EMOJI,
-                    ControlAction.SPACE, ControlAction.RETURN, ControlAction.BACKSPACE),
-                listOf("注", "123", "☺", "空白", returnKeyLabel, "⌫")
+            mode == Mode.NUMBER || mode == Mode.SYMBOL -> Pair(
+                listOf(
+                    if (zhuyinModeAllowed) ControlAction.TOGGLE_FINALS else ControlAction.ENGLISH,
+                    ControlAction.EMOJI,
+                    ControlAction.SPACE,
+                    ControlAction.RETURN
+                ),
+                listOf(
+                    if (zhuyinModeAllowed) "注" else "ABC",
+                    "☺",
+                    if (zhuyinModeAllowed) "空白" else "space",
+                    returnKeyLabel
+                )
             )
             else -> Pair(
                 listOf(ControlAction.SPACE, ControlAction.RETURN, ControlAction.BACKSPACE),
@@ -485,7 +459,6 @@ class ZhuyinKeyboardView @JvmOverloads constructor(
         paintControlText.textSize = min(controlH * 0.50f, dp(metrics.controlFontSize))
         paintCandidateText.textSize = dp(metrics.candidateFontSize)
         paintToneText.textSize = min(keyH * 0.55f, dp(metrics.toneFontSize))
-        paintKeyHint.textSize = dp(metrics.hintFontSize)
     }
 
     private fun layoutCandidateCells() {
@@ -567,14 +540,14 @@ class ZhuyinKeyboardView @JvmOverloads constructor(
             englishThirdRowSpec()
         )
         Mode.NUMBER -> listOf(
-            rowSpec(NUMBER_R1, startSlot = 0f),
-            rowSpec(NUMBER_R2, startSlot = 0f),
-            rowSpec(NUMBER_R3, startSlot = 0f)
+            rowSpec(IosAuxiliaryLayout.NUMBER_ROWS[0], startSlot = 0f),
+            rowSpec(IosAuxiliaryLayout.NUMBER_ROWS[1], startSlot = 0f),
+            auxiliaryThirdRowSpec(IosAuxiliaryLayout.NUMBER_ROWS[2])
         )
         Mode.SYMBOL -> listOf(
-            rowSpec(SYMBOL_R1, startSlot = 0f),
-            rowSpec(SYMBOL_R2, startSlot = 0f),
-            rowSpec(SYMBOL_R3, startSlot = 0f)
+            rowSpec(IosAuxiliaryLayout.SYMBOL_ROWS[0], startSlot = 0f),
+            rowSpec(IosAuxiliaryLayout.SYMBOL_ROWS[1], startSlot = 0f),
+            auxiliaryThirdRowSpec(IosAuxiliaryLayout.SYMBOL_ROWS[2])
         )
     }
 
@@ -593,6 +566,17 @@ class ZhuyinKeyboardView @JvmOverloads constructor(
                 listOf(KeySpec("⌫", columnCountForCurrentMode() - metrics.englishFunctionKeyWidth, metrics.englishFunctionKeyWidth))
         )
 
+    private fun auxiliaryThirdRowSpec(labels: List<String>): KeyRowSpec {
+        val punctuation = labels.subList(1, labels.lastIndex)
+        return KeyRowSpec(
+            listOf(KeySpec(labels.first(), 0f, 1.25f)) +
+                punctuation.mapIndexed { index, label ->
+                    KeySpec(label, 1.75f + index * 1.3f)
+                } +
+                listOf(KeySpec(labels.last(), 8.75f, 1.25f))
+        )
+    }
+
     private fun toneRowSpec(labels: List<String>): KeyRowSpec {
         val tones = labels.filter { it in ZhuyinDynamicLayout.TONES }
         return KeyRowSpec(
@@ -607,7 +591,7 @@ class ZhuyinKeyboardView @JvmOverloads constructor(
     private fun columnCountForCurrentMode(): Int = when (mode) {
         Mode.ZHUYIN -> 9
         Mode.ENGLISH -> 10
-        Mode.NUMBER, Mode.SYMBOL -> 8
+        Mode.NUMBER, Mode.SYMBOL -> 10
     }
 
     // ============================================================
@@ -684,7 +668,7 @@ class ZhuyinKeyboardView @JvmOverloads constructor(
         for ((i, k) in zhuyinKeys.withIndex()) {
             if (k.label.isEmpty()) continue
             val isPressed = (i == pressedKeyIdx)
-            val isFunctionKey = k.isToggle || k.label == "⌫"
+            val isFunctionKey = k.isToggle || k.label in setOf("⌫", "#+=", "123")
 
             val bgColor = when {
                 isPressed && isFunctionKey -> colorControlBgPressed
@@ -701,27 +685,17 @@ class ZhuyinKeyboardView @JvmOverloads constructor(
             canvas.drawRoundRect(k.rect, cornerRadius, cornerRadius, paintRoundRect)
             paintRoundRect.style = Paint.Style.FILL
 
-            paintKeyText.color = colorKeyText
-            val cy = k.rect.centerY() - (paintKeyText.ascent() + paintKeyText.descent()) / 2
+            val labelPaint = if (k.label in setOf("#+=", "123")) {
+                paintControlText
+            } else {
+                paintKeyText
+            }
+            labelPaint.color = colorKeyText
+            val cy = k.rect.centerY() - (labelPaint.ascent() + labelPaint.descent()) / 2
             if (k.label.isNotEmpty()) {
-                canvas.drawText(k.label, k.rect.centerX(), cy, paintKeyText)
+                canvas.drawText(k.label, k.rect.centerX(), cy, labelPaint)
             }
 
-            // ㄧ/ㄨ/ㄩ 雙重身份提示
-            // 注音模式下, 這 3 個有「介音 / 獨立韻」兩種身份
-            // 顯示: 大字主符號 (中心) + 小字字名 (底部)
-            if (k.label.isNotEmpty() && mode == Mode.ZHUYIN && ZhuyinDynamicLayout.MEDIALS.contains(k.label)) {
-                val hintText = when (k.label) {
-                    "ㄧ" -> "衣"
-                    "ㄨ" -> "烏"
-                    "ㄩ" -> "淤"
-                    else -> ""
-                }
-                if (hintText.isNotEmpty()) {
-                    val hintY = k.rect.bottom - dp(metrics.hintBottomPadding)
-                    canvas.drawText(hintText, k.rect.centerX(), hintY, paintKeyHint)
-                }
-            }
         }
 
         // 控制列
@@ -1058,6 +1032,8 @@ class ZhuyinKeyboardView @JvmOverloads constructor(
                             englishShifted = !englishShifted
                             refresh()
                         }
+                        "#+=" -> onSymbolMode?.invoke()
+                        "123" -> onNumberMode?.invoke()
                         "⌫" -> { /* handled on DOWN/UP for repeat delete */ }
                         else -> if (key.label.isNotEmpty()) {
                             onSymbolChar?.invoke(key.label)
