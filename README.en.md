@@ -13,6 +13,7 @@ dictionaries, trademark assets, or other copyrighted materials.
 - Dynamic Zhuyin keyboard flow inspired by iOS-style input behavior.
 - Stable key positions for Zhuyin and English layouts.
 - Zhuyin candidate lookup from a generated dictionary asset.
+- Continuous multi-syllable composition with phrase candidates, per-syllable sentence fallback, and tone-sandhi recovery for 一 and 不.
 - English, number, and symbol input modes.
 - Offline processing without network permission.
 

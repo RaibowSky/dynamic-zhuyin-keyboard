@@ -29,13 +29,7 @@ class IOSZhuyinIME : InputMethodService() {
     private var showFinalPage: Boolean = false
 
     private var personalizationAllowed = false
-
-    private data class ZhuyinSegment(
-        val text: String,
-        val start: Int,
-        val end: Int,
-        val hasTone: Boolean
-    )
+    private var editorKeyboardMode = EditorKeyboardMode.ZHUYIN
 
     private fun wordSelected(reading: String, word: String) {
         if (!personalizationAllowed || !CandidateLearningSettings.isEnabled(this)) return
@@ -152,6 +146,7 @@ class IOSZhuyinIME : InputMethodService() {
         view.onToneSelected = { tone -> onToneSelected(tone) }
 
         keyboardView = view
+        applyEditorKeyboardMode()
         syncKeyboardView()
         return view
     }
@@ -201,34 +196,32 @@ class IOSZhuyinIME : InputMethodService() {
             return
         }
 
-        val fullCandidates = getSortedCandidates(raw)
-        if (fullCandidates.isNotEmpty()) {
-            allCandidates = fullCandidates
-            activeSegmentStart = 0
-            activeSegmentEnd = raw.length
-        } else {
-            val first = splitSegments(raw).firstOrNull()
-            val lookup = first?.text ?: raw
-            allCandidates = getSortedCandidates(lookup)
-            activeSegmentStart = first?.start ?: 0
-            activeSegmentEnd = first?.end ?: raw.length
-        }
+        val match = ZhuyinComposition.resolveLeadingCandidates(
+            raw = raw,
+            segments = splitSegments(raw),
+            candidatesForReading = ::getSortedCandidates
+        )
+        allCandidates = match?.candidates.orEmpty()
+        activeSegmentStart = match?.start ?: 0
+        activeSegmentEnd = match?.end ?: raw.length
 
         selectedCandidateIndex = when {
             allCandidates.isEmpty() -> -1
             resetSelection || selectedCandidateIndex !in allCandidates.indices -> 0
             else -> selectedCandidateIndex
         }
-        candidatePage = if (selectedCandidateIndex >= 0) selectedCandidateIndex / PAGE_SIZE else 0
+        val pageSize = ImeBehavior.candidatePageSize(allCandidates)
+        candidatePage = if (selectedCandidateIndex >= 0) selectedCandidateIndex / pageSize else 0
         syncKeyboardView()
     }
 
     private fun syncKeyboardView() {
         val view = keyboardView ?: return
-        val start = candidatePage * PAGE_SIZE
-        val pageCandidates = allCandidates.drop(start).take(PAGE_SIZE)
+        val pageSize = ImeBehavior.candidatePageSize(allCandidates)
+        val start = candidatePage * pageSize
+        val pageCandidates = allCandidates.drop(start).take(pageSize)
         view.candidates = pageCandidates
-        view.hasMoreCandidates = allCandidates.size > PAGE_SIZE
+        view.hasMoreCandidates = allCandidates.size > pageSize
         view.selectedCandidateIndex =
             if (selectedCandidateIndex in start until start + pageCandidates.size) {
                 selectedCandidateIndex - start
@@ -241,9 +234,10 @@ class IOSZhuyinIME : InputMethodService() {
 
     private fun nextCandidatePage() {
         if (allCandidates.isEmpty()) return
-        val pages = (allCandidates.size + PAGE_SIZE - 1) / PAGE_SIZE
+        val pageSize = ImeBehavior.candidatePageSize(allCandidates)
+        val pages = (allCandidates.size + pageSize - 1) / pageSize
         candidatePage = (candidatePage + 1) % pages
-        selectedCandidateIndex = candidatePage * PAGE_SIZE
+        selectedCandidateIndex = candidatePage * pageSize
         syncKeyboardView()
         vibrateLight()
     }
@@ -251,7 +245,7 @@ class IOSZhuyinIME : InputMethodService() {
     private fun cycleCandidate() {
         if (allCandidates.isEmpty()) return
         selectedCandidateIndex = (selectedCandidateIndex + 1).floorMod(allCandidates.size)
-        candidatePage = selectedCandidateIndex / PAGE_SIZE
+        candidatePage = selectedCandidateIndex / ImeBehavior.candidatePageSize(allCandidates)
         syncKeyboardView()
         vibrateLight()
     }
@@ -277,56 +271,7 @@ class IOSZhuyinIME : InputMethodService() {
     }
 
     private fun splitSegments(text: String): List<ZhuyinSegment> {
-        if (text.isEmpty()) return emptyList()
-        val result = mutableListOf<ZhuyinSegment>()
-        var i = 0
-        while (i < text.length) {
-            if (text[i] in TONE_CHARS) {
-                result.add(ZhuyinSegment(text.substring(i, i + 1), i, i + 1, true))
-                i++
-                continue
-            }
-
-            val runStart = i
-            while (i < text.length && text[i] !in TONE_CHARS) i++
-            splitBaseRun(text, runStart, i, result)
-
-            if (i < text.length && text[i] in TONE_CHARS && result.isNotEmpty()) {
-                val last = result.removeAt(result.lastIndex)
-                result.add(
-                    ZhuyinSegment(
-                        text.substring(last.start, i + 1),
-                        last.start,
-                        i + 1,
-                        hasTone = true
-                    )
-                )
-                i++
-            }
-        }
-        return result
-    }
-
-    private fun splitBaseRun(
-        text: String,
-        start: Int,
-        end: Int,
-        result: MutableList<ZhuyinSegment>
-    ) {
-        var pos = start
-        while (pos < end) {
-            var foundEnd = -1
-            for (len in minOf(MAX_SYLLABLE_LEN, end - pos) downTo 1) {
-                val candidate = text.substring(pos, pos + len)
-                if (isKnownUntonedSyllable(candidate)) {
-                    foundEnd = pos + len
-                    break
-                }
-            }
-            if (foundEnd < 0) foundEnd = pos + 1
-            result.add(ZhuyinSegment(text.substring(pos, foundEnd), pos, foundEnd, hasTone = false))
-            pos = foundEnd
-        }
+        return ZhuyinComposition.splitSegments(text, ::isKnownUntonedSyllable)
     }
 
     private fun isKnownUntonedSyllable(value: String): Boolean =
@@ -441,6 +386,19 @@ class IOSZhuyinIME : InputMethodService() {
         vibrateLight()
     }
 
+    private fun applyEditorKeyboardMode() {
+        val view = keyboardView ?: return
+        val allowsZhuyin = editorKeyboardMode == EditorKeyboardMode.ZHUYIN
+        view.setZhuyinModeAllowed(allowsZhuyin)
+        view.setMode(
+            when (editorKeyboardMode) {
+                EditorKeyboardMode.ZHUYIN -> ZhuyinKeyboardView.Mode.ZHUYIN
+                EditorKeyboardMode.ENGLISH -> ZhuyinKeyboardView.Mode.ENGLISH
+                EditorKeyboardMode.NUMBER -> ZhuyinKeyboardView.Mode.NUMBER
+            }
+        )
+    }
+
     private fun handleEmojiMode() {
         if (!commitComposingBeforeModeSwitch()) return
         switchKeyboard()
@@ -490,12 +448,14 @@ class IOSZhuyinIME : InputMethodService() {
             inputType = attribute?.inputType,
             imeOptions = attribute?.imeOptions
         )
+        editorKeyboardMode = ImeBehavior.keyboardMode(attribute?.inputType)
     }
 
     override fun onStartInputView(info: EditorInfo?, restarting: Boolean) {
         stopBackspaceRepeat()
         super.onStartInputView(info, restarting)
         resetToInitial()
+        applyEditorKeyboardMode()
     }
 
     override fun onFinishInputView(finishingInput: Boolean) {
@@ -597,8 +557,6 @@ class IOSZhuyinIME : InputMethodService() {
 
     companion object {
         private const val TAG = "IOSZhuyinIME"
-        private const val PAGE_SIZE = 9
-        private const val MAX_SYLLABLE_LEN = 3
         private const val MAX_BACKSPACE_CONTEXT = 64
         private const val FIRST_TONE = "ˉ"
         private const val NEUTRAL_TONE = "˙"

@@ -9,7 +9,15 @@ internal enum class EditorActionPlan {
     INSERT_NEWLINE
 }
 
+internal enum class EditorKeyboardMode {
+    ZHUYIN,
+    ENGLISH,
+    NUMBER
+}
+
 internal object ImeBehavior {
+    private const val CANDIDATE_ROW_UNITS = 9
+
     @Suppress("InlinedApi")
     fun allowsPersonalizedLearning(inputType: Int?, imeOptions: Int?): Boolean {
         if (inputType == null || imeOptions == null) return false
@@ -37,6 +45,48 @@ internal object ImeBehavior {
             EditorInfo.IME_ACTION_UNSPECIFIED -> EditorActionPlan.INSERT_NEWLINE
             else -> EditorActionPlan.DEFAULT_ACTION
         }
+    }
+
+    fun keyboardMode(inputType: Int?): EditorKeyboardMode {
+        if (inputType == null) return EditorKeyboardMode.ZHUYIN
+        val inputClass = inputType and InputType.TYPE_MASK_CLASS
+        val variation = inputType and InputType.TYPE_MASK_VARIATION
+
+        if (
+            inputClass == InputType.TYPE_CLASS_NUMBER &&
+            variation == InputType.TYPE_NUMBER_VARIATION_PASSWORD
+        ) {
+            return EditorKeyboardMode.NUMBER
+        }
+        if (
+            inputClass == InputType.TYPE_CLASS_TEXT &&
+            variation in setOf(
+                InputType.TYPE_TEXT_VARIATION_PASSWORD,
+                InputType.TYPE_TEXT_VARIATION_VISIBLE_PASSWORD,
+                InputType.TYPE_TEXT_VARIATION_WEB_PASSWORD
+            )
+        ) {
+            return EditorKeyboardMode.ENGLISH
+        }
+        return EditorKeyboardMode.ZHUYIN
+    }
+
+    fun candidatePageSize(candidates: List<String>): Int {
+        val longest = candidates.maxOfOrNull { candidate ->
+            candidate.codePointCount(0, candidate.length)
+        } ?: 1
+        return (CANDIDATE_ROW_UNITS / longest.coerceAtLeast(1)).coerceIn(1, CANDIDATE_ROW_UNITS)
+    }
+}
+
+internal object PressedKeyRemapping {
+    fun remapIndex(
+        previousLabels: List<String>,
+        nextLabels: List<String>,
+        previousIndex: Int
+    ): Int {
+        val label = previousLabels.getOrNull(previousIndex) ?: return -1
+        return nextLabels.indexOf(label)
     }
 }
 

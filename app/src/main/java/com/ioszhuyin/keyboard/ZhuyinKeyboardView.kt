@@ -4,9 +4,11 @@ import android.content.Context
 import android.content.SharedPreferences
 import android.graphics.*
 import android.net.Uri
+import android.os.Build
 import android.util.AttributeSet
 import android.view.MotionEvent
 import android.view.View
+import android.view.WindowInsets
 import kotlin.math.min
 
 /**
@@ -56,14 +58,25 @@ class ZhuyinKeyboardView @JvmOverloads constructor(
     enum class Mode { ZHUYIN, ENGLISH, NUMBER, SYMBOL }
 
     private var mode: Mode = Mode.ZHUYIN
+    private var zhuyinModeAllowed: Boolean = true
     private var englishShifted: Boolean = false
     fun setMode(m: Mode) {
-        mode = m
-        if (m != Mode.ZHUYIN) showFinalPage = false
-        if (m != Mode.ENGLISH) englishShifted = false
+        mode = if (m == Mode.ZHUYIN && !zhuyinModeAllowed) Mode.ENGLISH else m
+        if (mode != Mode.ZHUYIN) showFinalPage = false
+        if (mode != Mode.ENGLISH) englishShifted = false
         refresh()
     }
     fun getMode(): Mode = mode
+
+    fun setZhuyinModeAllowed(allowed: Boolean) {
+        if (zhuyinModeAllowed == allowed) return
+        zhuyinModeAllowed = allowed
+        if (!allowed && mode == Mode.ZHUYIN) {
+            mode = Mode.ENGLISH
+            showFinalPage = false
+        }
+        refresh()
+    }
 
     private val ENGLISH_R1 = listOf("q", "w", "e", "r", "t", "y", "u", "i", "o", "p")
     private val ENGLISH_R2 = listOf("a", "s", "d", "f", "g", "h", "j", "k", "l")
@@ -196,6 +209,7 @@ class ZhuyinKeyboardView @JvmOverloads constructor(
     override fun onAttachedToWindow() {
         super.onAttachedToWindow()
         metricsPrefs.registerOnSharedPreferenceChangeListener(metricsListener)
+        requestApplyInsets()
     }
 
     override fun onDetachedFromWindow() {
@@ -245,6 +259,7 @@ class ZhuyinKeyboardView @JvmOverloads constructor(
     private var compositionBarRect: RectF = RectF()
     private var candidateBarRect: RectF = RectF()
     private val toneRects = mutableListOf<RectF>()
+    private var systemBottomInset = 0f
 
     val keyboardContentTop: Float get() {
         if (compositionBarRect.height() > 0f) return compositionBarRect.top
@@ -260,15 +275,38 @@ class ZhuyinKeyboardView @JvmOverloads constructor(
         relayout()
     }
 
+    override fun onApplyWindowInsets(insets: WindowInsets): WindowInsets {
+        val bottomInset = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            maxOf(
+                insets.getInsets(WindowInsets.Type.navigationBars()).bottom,
+                insets.getInsets(WindowInsets.Type.mandatorySystemGestures()).bottom
+            )
+        } else {
+            @Suppress("DEPRECATION")
+            insets.systemWindowInsetBottom
+        }.toFloat()
+
+        if (systemBottomInset != bottomInset) {
+            systemBottomInset = bottomInset
+            relayout()
+            invalidate()
+        }
+        return super.onApplyWindowInsets(insets)
+    }
+
     private fun relayout() {
         metrics = KeyboardMetrics.current(context)
         val width = width.toFloat()
         val height = height.toFloat()
         if (width <= 0 || height <= 0) return
 
+        val previousKeyLabels = zhuyinKeys.map { it.label }
+        val previousPressedKeyIdx = pressedKeyIdx
+        val previousDownKeyIdx = (downTarget as? TouchTarget.ZhuyinKey)?.idx
+
         val padX = dp(metrics.keyboardHorizontalPadding)
         val padTopMetric = dp(metrics.keyboardTopPadding)
-        val padBottomMetric = dp(metrics.keyboardBottomPadding)
+        val padBottomMetric = dp(metrics.keyboardBottomPadding) + systemBottomInset
         val rowSpacing = dp(metrics.verticalGap)
         val keySpacing = dp(metrics.horizontalGap)
         val controlSpacing = dp(metrics.horizontalGap)
@@ -314,6 +352,22 @@ class ZhuyinKeyboardView @JvmOverloads constructor(
             }
             y += keyH + rowSpacing
         }
+        val currentKeyLabels = zhuyinKeys.map { it.label }
+        pressedKeyIdx = PressedKeyRemapping.remapIndex(
+            previousKeyLabels,
+            currentKeyLabels,
+            previousPressedKeyIdx
+        )
+        if (isBackspaceDown && previousDownKeyIdx != null) {
+            val remappedDownKeyIdx = PressedKeyRemapping.remapIndex(
+                previousKeyLabels,
+                currentKeyLabels,
+                previousDownKeyIdx
+            )
+            downTarget = remappedDownKeyIdx
+                .takeIf { it >= 0 }
+                ?.let { TouchTarget.ZhuyinKey(it) }
+        }
         y -= rowSpacing  // 最後一列不加分隔
         y += controlSpacing
 
@@ -321,6 +375,9 @@ class ZhuyinKeyboardView @JvmOverloads constructor(
         // 聲母頁: 韻 / ABC / 123 / 空白 / 換行 / ⌫
         // 韻母頁: ABC / 123 / 空白(一聲) / 選定
         controlKeys.clear()
+        val textModeAction =
+            if (zhuyinModeAllowed) ControlAction.TOGGLE_FINALS else ControlAction.ENGLISH
+        val textModeLabel = if (zhuyinModeAllowed) "注" else "ABC"
         val (actions, labels) = when {
             mode == Mode.ZHUYIN && showFinalPage -> Pair(
                 listOf(ControlAction.ENGLISH, ControlAction.NUMBER, ControlAction.EMOJI,
@@ -333,19 +390,29 @@ class ZhuyinKeyboardView @JvmOverloads constructor(
                 listOf("ABC", "123", "☺", "空白", "換行")
             )
             mode == Mode.ENGLISH -> Pair(
-                listOf(ControlAction.TOGGLE_FINALS, ControlAction.NUMBER, ControlAction.EMOJI,
+                listOf(textModeAction, ControlAction.NUMBER, ControlAction.EMOJI,
                     ControlAction.SPACE, ControlAction.RETURN),
-                listOf("注", "123", "☺", "space", "return")
+                listOf(textModeLabel, "123", "☺", "space", "return")
+            )
+            mode == Mode.NUMBER && !zhuyinModeAllowed -> Pair(
+                listOf(ControlAction.ENGLISH, ControlAction.SYMBOL, ControlAction.EMOJI,
+                    ControlAction.SPACE, ControlAction.RETURN, ControlAction.BACKSPACE),
+                listOf("ABC", "#+=", "☺", "空白", "換行", "⌫")
             )
             mode == Mode.NUMBER -> Pair(
-                listOf(ControlAction.TOGGLE_FINALS, ControlAction.ENGLISH, ControlAction.SYMBOL,
+                listOf(textModeAction, ControlAction.ENGLISH, ControlAction.SYMBOL,
                     ControlAction.SPACE, ControlAction.RETURN, ControlAction.BACKSPACE),
-                listOf("注", "ABC", "#+=", "空白", "換行", "⌫")
+                listOf(textModeLabel, "ABC", "#+=", "空白", "換行", "⌫")
+            )
+            mode == Mode.SYMBOL && !zhuyinModeAllowed -> Pair(
+                listOf(ControlAction.ENGLISH, ControlAction.NUMBER, ControlAction.EMOJI,
+                    ControlAction.SPACE, ControlAction.RETURN, ControlAction.BACKSPACE),
+                listOf("ABC", "123", "☺", "空白", "換行", "⌫")
             )
             mode == Mode.SYMBOL -> Pair(
-                listOf(ControlAction.TOGGLE_FINALS, ControlAction.ENGLISH, ControlAction.NUMBER,
+                listOf(textModeAction, ControlAction.ENGLISH, ControlAction.NUMBER,
                     ControlAction.SPACE, ControlAction.RETURN, ControlAction.BACKSPACE),
-                listOf("注", "ABC", "123", "空白", "換行", "⌫")
+                listOf(textModeLabel, "ABC", "123", "空白", "換行", "⌫")
             )
             else -> Pair(
                 listOf(ControlAction.SPACE, ControlAction.RETURN, ControlAction.BACKSPACE),
@@ -494,7 +561,7 @@ class ZhuyinKeyboardView @JvmOverloads constructor(
         if (bgBottom > bgTop) {
             paintRoundRect.color = Color.parseColor("#D1D5DB")
             canvas.drawRect(0f, bgTop.coerceAtLeast(0f), width.toFloat(),
-                bgBottom.coerceAtMost(height.toFloat()), paintRoundRect)
+                height.toFloat(), paintRoundRect)
             // 頂部分隔線
             if (bgTop > 0f) {
                 paintRoundRect.color = Color.parseColor("#C8CCD0")

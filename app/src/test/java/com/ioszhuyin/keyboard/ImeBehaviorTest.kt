@@ -59,6 +59,23 @@ class ImeBehaviorTest {
     }
 
     @Test
+    fun backspaceHighlightFollowsKeyAcrossZhuyinPageChange() {
+        val finalPage = ZhuyinDynamicLayout.FINAL_PAGE_ROWS.flatten()
+        val initialPage = ZhuyinDynamicLayout.INITIAL_PAGE_ROWS.flatten()
+        val oldBackspaceIndex = finalPage.indexOf("⌫")
+
+        assertEquals("ㄖ", initialPage[oldBackspaceIndex])
+
+        val remappedIndex = PressedKeyRemapping.remapIndex(
+            previousLabels = finalPage,
+            nextLabels = initialPage,
+            previousIndex = oldBackspaceIndex
+        )
+
+        assertEquals("⌫", initialPage[remappedIndex])
+    }
+
+    @Test
     fun learningIsDisabledForSensitiveAndOptOutEditors() {
         val text = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_NORMAL
         val password = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_PASSWORD
@@ -100,6 +117,34 @@ class ImeBehaviorTest {
                 EditorInfo.IME_ACTION_GO or EditorInfo.IME_FLAG_NO_ENTER_ACTION
             )
         )
+    }
+
+    @Test
+    fun passwordEditorsSelectAndLockToNonZhuyinModes() {
+        val normalText = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_NORMAL
+        val password = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_PASSWORD
+        val visiblePassword =
+            InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_VISIBLE_PASSWORD
+        val webPassword =
+            InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_WEB_PASSWORD
+        val pin = InputType.TYPE_CLASS_NUMBER or InputType.TYPE_NUMBER_VARIATION_PASSWORD
+
+        assertEquals(EditorKeyboardMode.ZHUYIN, ImeBehavior.keyboardMode(normalText))
+        assertEquals(EditorKeyboardMode.ENGLISH, ImeBehavior.keyboardMode(password))
+        assertEquals(EditorKeyboardMode.ENGLISH, ImeBehavior.keyboardMode(visiblePassword))
+        assertEquals(EditorKeyboardMode.ENGLISH, ImeBehavior.keyboardMode(webPassword))
+        assertEquals(EditorKeyboardMode.NUMBER, ImeBehavior.keyboardMode(pin))
+        assertEquals(EditorKeyboardMode.ZHUYIN, ImeBehavior.keyboardMode(null))
+    }
+
+    @Test
+    fun candidatePageSizeAdaptsToPhraseLength() {
+        assertEquals(9, ImeBehavior.candidatePageSize(listOf("這", "那")))
+        assertEquals(4, ImeBehavior.candidatePageSize(listOf("所以", "但是")))
+        assertEquals(3, ImeBehavior.candidatePageSize(listOf("這一版", "這一板")))
+        assertEquals(2, ImeBehavior.candidatePageSize(listOf("候選片語")))
+        assertEquals(1, ImeBehavior.candidatePageSize(listOf("很長的候選片語")))
+        assertEquals(9, ImeBehavior.candidatePageSize(emptyList()))
     }
 
     @Test
