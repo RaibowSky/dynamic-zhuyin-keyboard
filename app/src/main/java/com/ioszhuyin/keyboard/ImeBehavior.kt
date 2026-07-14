@@ -95,6 +95,11 @@ internal object CandidatePanelBehavior {
 
     fun clampScroll(offset: Float, contentHeight: Float, viewportHeight: Float): Float =
         offset.coerceIn(0f, (contentHeight - viewportHeight).coerceAtLeast(0f))
+
+    fun pageAfterSwipe(currentPage: Int, delta: Int, pageCount: Int): Int {
+        if (pageCount <= 0) return 0
+        return (currentPage + delta).coerceIn(0, pageCount - 1)
+    }
 }
 
 internal object PressedKeyRemapping {

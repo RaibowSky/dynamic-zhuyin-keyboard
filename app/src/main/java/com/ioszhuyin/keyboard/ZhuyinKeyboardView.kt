@@ -150,6 +150,7 @@ class ZhuyinKeyboardView @JvmOverloads constructor(
     var onSwitchIme: (() -> Unit)? = null
     var onCandidatePress: ((String) -> Unit)? = null
     var onCandidateExpansionToggle: (() -> Unit)? = null
+    var onCandidatePageSwipe: ((Int) -> Unit)? = null
     var onNumberMode: (() -> Unit)? = null
     var onSymbolMode: (() -> Unit)? = null
     var onEnglishMode: (() -> Unit)? = null
@@ -284,8 +285,10 @@ class ZhuyinKeyboardView @JvmOverloads constructor(
     private var candidateScrollOffset = 0f
     private val candidateTouchSlop = ViewConfiguration.get(context).scaledTouchSlop.toFloat()
     private var candidateDragStartY = 0f
+    private var candidateDragStartX = 0f
     private var candidateDragStartOffset = 0f
     private var candidateDragging = false
+    private var candidateSwipeDirection = 0
     private val toneRects = mutableListOf<RectF>()
     private var systemBottomInset = 0f
 
@@ -906,9 +909,11 @@ class ZhuyinKeyboardView @JvmOverloads constructor(
             MotionEvent.ACTION_DOWN -> {
                 val t = findTarget(event.x, event.y)
                 downTarget = t
+                candidateDragStartX = event.x
                 candidateDragStartY = event.y
                 candidateDragStartOffset = candidateScrollOffset
                 candidateDragging = false
+                candidateSwipeDirection = 0
                 pressedKeyIdx = (t as? TouchTarget.ZhuyinKey)?.idx ?: -1
                 pressedControlIdx = (t as? TouchTarget.ControlKey)?.idx ?: -1
                 pressedToneIdx = (t as? TouchTarget.ToneKey)?.idx ?: -1
@@ -922,6 +927,21 @@ class ZhuyinKeyboardView @JvmOverloads constructor(
                 return t != null
             }
             MotionEvent.ACTION_MOVE -> {
+                if (!candidateExpanded &&
+                    (downTarget is TouchTarget.Candidate ||
+                        downTarget is TouchTarget.CandidatePanel)
+                ) {
+                    val dragX = event.x - candidateDragStartX
+                    val dragY = event.y - candidateDragStartY
+                    if (candidateDragging ||
+                        (abs(dragX) > candidateTouchSlop && abs(dragX) > abs(dragY))
+                    ) {
+                        candidateDragging = true
+                        candidateSwipeDirection = if (dragX < 0f) 1 else -1
+                        invalidate()
+                        return true
+                    }
+                }
                 if (candidateExpanded && candidateBarRect.contains(event.x, event.y) &&
                     (downTarget is TouchTarget.Candidate ||
                         downTarget is TouchTarget.CandidatePanel)
@@ -957,7 +977,9 @@ class ZhuyinKeyboardView @JvmOverloads constructor(
             }
             MotionEvent.ACTION_UP -> {
                 val t = findTarget(event.x, event.y)
-                if (!candidateDragging && t != null && t == downTarget) {
+                if (candidateDragging && candidateSwipeDirection != 0) {
+                    onCandidatePageSwipe?.invoke(candidateSwipeDirection)
+                } else if (!candidateDragging && t != null && t == downTarget) {
                     handleTarget(t)
                 }
                 if (isBackspaceDown) {
@@ -969,6 +991,7 @@ class ZhuyinKeyboardView @JvmOverloads constructor(
                 downTarget = null
                 isBackspaceDown = false
                 candidateDragging = false
+                candidateSwipeDirection = 0
                 invalidate()
                 return true
             }
@@ -982,6 +1005,7 @@ class ZhuyinKeyboardView @JvmOverloads constructor(
                 downTarget = null
                 isBackspaceDown = false
                 candidateDragging = false
+                candidateSwipeDirection = 0
                 invalidate()
                 return true
             }

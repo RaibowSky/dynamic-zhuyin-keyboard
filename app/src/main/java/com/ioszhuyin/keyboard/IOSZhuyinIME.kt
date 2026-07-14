@@ -138,6 +138,7 @@ class IOSZhuyinIME : InputMethodService() {
         view.onSwitchIme = { switchKeyboard() }
         view.onCandidatePress = { candidate -> commitSelectedCandidate(candidate) }
         view.onCandidateExpansionToggle = { toggleCandidateExpansion() }
+        view.onCandidatePageSwipe = { delta -> moveCandidatePage(delta) }
         view.onEnglishMode = { handleEnglishMode() }
         view.onNumberMode = { handleNumberMode() }
         view.onSymbolMode = { handleSymbolMode() }
@@ -236,6 +237,18 @@ class IOSZhuyinIME : InputMethodService() {
     private fun toggleCandidateExpansion() {
         if (allCandidates.size <= ImeBehavior.candidatePageSize(allCandidates)) return
         candidatesExpanded = !candidatesExpanded
+        syncKeyboardView()
+        vibrateLight()
+    }
+
+    private fun moveCandidatePage(delta: Int) {
+        if (allCandidates.isEmpty()) return
+        val pageSize = ImeBehavior.candidatePageSize(allCandidates)
+        val pageCount = (allCandidates.size + pageSize - 1) / pageSize
+        val newPage = CandidatePanelBehavior.pageAfterSwipe(candidatePage, delta, pageCount)
+        if (newPage == candidatePage) return
+        candidatePage = newPage
+        selectedCandidateIndex = candidatePage * pageSize
         syncKeyboardView()
         vibrateLight()
     }

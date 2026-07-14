@@ -167,6 +167,10 @@ class ImeBehaviorTest {
         assertEquals(20f, CandidatePanelBehavior.clampScroll(50f, 120f, 100f))
         assertEquals(0f, CandidatePanelBehavior.clampScroll(-10f, 120f, 100f))
         assertEquals(0f, CandidatePanelBehavior.clampScroll(10f, 80f, 100f))
+        assertEquals(1, CandidatePanelBehavior.pageAfterSwipe(0, 1, 3))
+        assertEquals(2, CandidatePanelBehavior.pageAfterSwipe(2, 1, 3))
+        assertEquals(0, CandidatePanelBehavior.pageAfterSwipe(0, -1, 3))
+        assertEquals(1, CandidatePanelBehavior.pageAfterSwipe(2, -1, 3))
     }
 
     @Test
