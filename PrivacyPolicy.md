@@ -1,6 +1,6 @@
 # Privacy Policy
 
-Last updated: 2026-06-25
+Last updated: 2026-07-14
 
 This policy applies to the Android input method "Dynamic Zhuyin Keyboard".
 
@@ -48,8 +48,10 @@ candidates, cloud sync, or crash reporting services.
 
 ## Dictionary Data
 
-The bundled candidate dictionary is generated from CC-CEDICT. See `NOTICE.md`
-for source and license attribution.
+The bundled candidate entries and readings are generated from CC-CEDICT.
+Their default order is informed by offline McBopomofo aggregate
+phrase-frequency data. These resources are processed locally without runtime
+network lookup. See `NOTICE.md` for source and license attribution.
 
 ## Contact
 

@@ -40,13 +40,17 @@ The currently bundled dictionary asset is:
 
 - `app/src/main/assets/zhuyin_cedict.tsv`
 
-It was generated from CC-CEDICT data downloaded from MDBG and converted from
-Pinyin readings into Zhuyin keys by:
+Its entries and readings were generated from CC-CEDICT data downloaded from
+MDBG and converted from Pinyin readings into Zhuyin keys. Default candidate
+ordering is informed by McBopomofo aggregate phrase-frequency data; this does
+not add McBopomofo entries or its underlying corpus. The relevant scripts are:
 
 - `tools/build_zhuyin_dictionary.py`
+- `tools/rank_zhuyin_dictionary.py`
 
-See `NOTICE.md` and `app/src/main/assets/zhuyin_cedict_LICENSE.txt` for source
-and license attribution.
+See `NOTICE.md`, `tools/data/README.md`, and
+`app/src/main/assets/zhuyin_cedict_LICENSE.txt` for source and license
+attribution.
 
 ## Privacy
 
@@ -70,8 +74,10 @@ Unless explicitly documented in `NOTICE.md`, this repository does not contain
 third-party source code, proprietary dictionaries, visual assets, or other
 copyrighted materials.
 
-The bundled dictionary currently included in this repository is generated only
-from CC-CEDICT as described above.
+The bundled dictionary entries and readings come from CC-CEDICT. Default
+candidate ordering uses McBopomofo aggregate phrase-frequency data. Both
+sources, pinned versions, transformations, and licenses are documented in
+`NOTICE.md`.
 
 ## Licensing
 
@@ -79,5 +85,7 @@ No open-source license has been granted for this repository's original project
 code yet. All rights are reserved by the project owner unless a `LICENSE` file is
 added later.
 
-Third-party data retains its own license. In particular, the bundled generated
-dictionary derived from CC-CEDICT is subject to CC-CEDICT's license terms.
+Third-party data retains its own license. The generated dictionary derived from
+CC-CEDICT is subject to CC BY-SA 4.0, while the McBopomofo aggregate
+phrase-frequency data used for candidate ordering is subject to the MIT
+License. See `NOTICE.md` for complete attribution.

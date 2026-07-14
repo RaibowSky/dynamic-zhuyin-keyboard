@@ -36,16 +36,18 @@
 
 - `app/src/main/assets/zhuyin_cedict.tsv`
 
-這份檔案是由 CC-CEDICT 資料轉換而來：先讀取 CC-CEDICT 的繁體詞條與拼音讀音，再由專案內的腳本轉成注音查詢鍵。
+這份檔案的詞條與讀音由 CC-CEDICT 資料轉換而來：先讀取 CC-CEDICT 的繁體詞條與拼音讀音，再由專案內的腳本轉成注音查詢鍵。預設候選順序另使用 McBopomofo 的彙總詞頻資料排列；不會因此加入 McBopomofo 的詞條或底層語料。
 
 轉換腳本：
 
 - `tools/build_zhuyin_dictionary.py`
+- `tools/rank_zhuyin_dictionary.py`
 
 資料來源與授權請看：
 
 - `NOTICE.md`
 - `app/src/main/assets/zhuyin_cedict_LICENSE.txt`
+- `tools/data/README.md`
 
 ## 隱私
 
@@ -68,13 +70,13 @@
 
 除 `NOTICE.md` 明確列出的第三方資料外，本 repository 不包含任何第三方程式碼、專有詞庫、視覺素材或其他受版權保護內容。
 
-目前實際隨專案提供的候選字典僅來自 CC-CEDICT，其來源與授權請參閱前述章節。
+目前候選字典的詞條與讀音來自 CC-CEDICT；預設候選順序使用 McBopomofo 的彙總詞頻資料調整。兩者的來源、固定版本、轉換方式與授權請參閱 `NOTICE.md`。
 
 ## 授權狀態
 
 目前本專案原始碼尚未另外指定開源授權；除非之後加入 `LICENSE` 檔案，否則專案擁有者保留所有權利。
 
-第三方資料仍依各自授權條款使用。特別是由 CC-CEDICT 轉換而來的候選字典，需遵守 CC-CEDICT 的授權與標示要求。
+第三方資料仍依各自授權條款使用。由 CC-CEDICT 轉換而來的候選字典遵守 CC BY-SA 4.0；用於候選排序的 McBopomofo 彙總詞頻資料遵守 MIT License。完整標示請見 `NOTICE.md`。
 
 ## 開發提醒
 
