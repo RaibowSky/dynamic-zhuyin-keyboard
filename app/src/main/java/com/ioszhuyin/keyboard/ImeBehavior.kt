@@ -77,6 +77,24 @@ internal object ImeBehavior {
         } ?: 1
         return (CANDIDATE_ROW_UNITS / longest.coerceAtLeast(1)).coerceIn(1, CANDIDATE_ROW_UNITS)
     }
+
+    fun zhuyinControlLabels(showFinalPage: Boolean): List<String> =
+        if (showFinalPage) {
+            listOf("123", "☺", "一聲", "選定")
+        } else {
+            listOf("123", "☺", "空白", "換行")
+        }
+}
+
+internal object CandidatePanelBehavior {
+    fun rowCount(candidateCount: Int, columnCount: Int): Int {
+        if (candidateCount <= 0) return 0
+        return (candidateCount + columnCount.coerceAtLeast(1) - 1) /
+            columnCount.coerceAtLeast(1)
+    }
+
+    fun clampScroll(offset: Float, contentHeight: Float, viewportHeight: Float): Float =
+        offset.coerceIn(0f, (contentHeight - viewportHeight).coerceAtLeast(0f))
 }
 
 internal object PressedKeyRemapping {

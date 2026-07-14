@@ -148,6 +148,28 @@ class ImeBehaviorTest {
     }
 
     @Test
+    fun zhuyinControlRowMatchesIosDynamicPages() {
+        assertEquals(
+            listOf("123", "☺", "空白", "換行"),
+            ImeBehavior.zhuyinControlLabels(showFinalPage = false)
+        )
+        assertEquals(
+            listOf("123", "☺", "一聲", "選定"),
+            ImeBehavior.zhuyinControlLabels(showFinalPage = true)
+        )
+    }
+
+    @Test
+    fun expandedCandidatePanelCoversEveryCandidateAndClampsScrolling() {
+        assertEquals(0, CandidatePanelBehavior.rowCount(candidateCount = 0, columnCount = 9))
+        assertEquals(1, CandidatePanelBehavior.rowCount(candidateCount = 9, columnCount = 9))
+        assertEquals(3, CandidatePanelBehavior.rowCount(candidateCount = 20, columnCount = 9))
+        assertEquals(20f, CandidatePanelBehavior.clampScroll(50f, 120f, 100f))
+        assertEquals(0f, CandidatePanelBehavior.clampScroll(-10f, 120f, 100f))
+        assertEquals(0f, CandidatePanelBehavior.clampScroll(10f, 80f, 100f))
+    }
+
+    @Test
     fun unicodeBackspaceDeletesWholeUserPerceivedCharacter() {
         assertEquals(1, UnicodeBackspace.codeUnitsToDelete("注"))
         assertEquals(2, UnicodeBackspace.codeUnitsToDelete("A😀"))

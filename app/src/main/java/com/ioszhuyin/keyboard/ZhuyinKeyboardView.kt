@@ -8,7 +8,9 @@ import android.os.Build
 import android.util.AttributeSet
 import android.view.MotionEvent
 import android.view.View
+import android.view.ViewConfiguration
 import android.view.WindowInsets
+import kotlin.math.abs
 import kotlin.math.min
 
 /**
@@ -105,12 +107,28 @@ class ZhuyinKeyboardView @JvmOverloads constructor(
     var composingText: StringBuilder = StringBuilder()
 
     /** 候選字 (從字典 + 頻率學習) */
-    var candidates: List<String> = emptyList()
+    private var candidates: List<String> = emptyList()
+    private var candidatePageStart: Int = 0
+    private var hasMoreCandidates: Boolean = false
+    private var selectedCandidateIndex: Int = -1
+    private var candidateExpanded: Boolean = false
 
-    /** 候選分頁 */
-    var hasMoreCandidates: Boolean = false
-    var selectedCandidateIndex: Int = -1
-    var onNextCandidatesPage: (() -> Unit)? = null
+    fun updateCandidateState(
+        newCandidates: List<String>,
+        pageStart: Int,
+        selectedIndex: Int,
+        hasMore: Boolean,
+        expanded: Boolean
+    ) {
+        if (candidates != newCandidates || candidateExpanded != expanded) {
+            candidateScrollOffset = 0f
+        }
+        candidates = newCandidates
+        candidatePageStart = pageStart.coerceIn(0, newCandidates.size)
+        selectedCandidateIndex = selectedIndex
+        hasMoreCandidates = hasMore
+        candidateExpanded = expanded && hasMore
+    }
 
     /** iOS-style page switch: false = 聲母頁, true = 韻母/聲調頁 */
     private var showFinalPage: Boolean = false
@@ -131,6 +149,7 @@ class ZhuyinKeyboardView @JvmOverloads constructor(
     var onReturn: (() -> Unit)? = null
     var onSwitchIme: (() -> Unit)? = null
     var onCandidatePress: ((String) -> Unit)? = null
+    var onCandidateExpansionToggle: (() -> Unit)? = null
     var onNumberMode: (() -> Unit)? = null
     var onSymbolMode: (() -> Unit)? = null
     var onEnglishMode: (() -> Unit)? = null
@@ -173,11 +192,11 @@ class ZhuyinKeyboardView @JvmOverloads constructor(
     private val colorKeyTextDisabled = Color.parseColor("#D1D5DB")
     private val colorControlBg = Color.parseColor("#ABB1BD")
     private val colorControlBgPressed = Color.parseColor("#9097A3")
-    private val colorControlText = Color.WHITE
+    private val colorControlText = Color.parseColor("#1F2937")
     private val colorSpaceBg = Color.WHITE
     private val colorSpaceText = Color.parseColor("#374151")
-    private val colorReturnBg = Color.parseColor("#007AFF")
-    private val colorReturnBgPressed = Color.parseColor("#0056CC")
+    private val colorReturnBg = Color.parseColor("#ABB1BD")
+    private val colorReturnBgPressed = Color.parseColor("#9097A3")
     private val colorToneBg = Color.parseColor("#007AFF")
 
     init {
@@ -258,6 +277,15 @@ class ZhuyinKeyboardView @JvmOverloads constructor(
     private val controlKeys = mutableListOf<ControlKey>()
     private var compositionBarRect: RectF = RectF()
     private var candidateBarRect: RectF = RectF()
+    private var candidateToggleRect: RectF = RectF()
+    private data class CandidateCell(val candidateIndex: Int, val rect: RectF)
+    private val candidateCells = mutableListOf<CandidateCell>()
+    private var candidateContentHeight = 0f
+    private var candidateScrollOffset = 0f
+    private val candidateTouchSlop = ViewConfiguration.get(context).scaledTouchSlop.toFloat()
+    private var candidateDragStartY = 0f
+    private var candidateDragStartOffset = 0f
+    private var candidateDragging = false
     private val toneRects = mutableListOf<RectF>()
     private var systemBottomInset = 0f
 
@@ -327,10 +355,27 @@ class ZhuyinKeyboardView @JvmOverloads constructor(
             compositionBarRect = RectF()
         }
         if (candidates.isNotEmpty()) {
-            candidateBarRect = RectF(padX, y, width - padX, y + candidateBarHeight)
-            y += candidateBarHeight + rowSpacing
+            val candidateBottom = if (candidateExpanded) {
+                (height - padBottomMetric).coerceAtLeast(y + candidateBarHeight)
+            } else {
+                y + candidateBarHeight
+            }
+            candidateBarRect = RectF(padX, y, width - padX, candidateBottom)
+            y += candidateBarRect.height() + rowSpacing
         } else {
             candidateBarRect = RectF()
+        }
+
+        if (candidateExpanded && candidateBarRect.height() > 0f) {
+            zhuyinKeys.clear()
+            controlKeys.clear()
+            toneRects.clear()
+            pressedKeyIdx = -1
+            pressedControlIdx = -1
+            pressedToneIdx = -1
+            layoutCandidateCells()
+            updateTextSizes()
+            return
         }
 
         // === iOS-style explicit geometry: short rows keep fixed slot offsets ===
@@ -371,28 +416,24 @@ class ZhuyinKeyboardView @JvmOverloads constructor(
         y -= rowSpacing  // 最後一列不加分隔
         y += controlSpacing
 
-        // 控制列: 依模式顯示不同 label
-        // 聲母頁: 韻 / ABC / 123 / 空白 / 換行 / ⌫
-        // 韻母頁: ABC / 123 / 空白(一聲) / 選定
+        // 控制列: 注音頁沿用 iOS 的 123 / 表情 / 空白 / 換行配置。
+        // 語言切換交給表情／下一個鍵盤按鈕開啟系統輸入法選擇器。
         controlKeys.clear()
-        val textModeAction =
-            if (zhuyinModeAllowed) ControlAction.TOGGLE_FINALS else ControlAction.ENGLISH
-        val textModeLabel = if (zhuyinModeAllowed) "注" else "ABC"
         val (actions, labels) = when {
             mode == Mode.ZHUYIN && showFinalPage -> Pair(
-                listOf(ControlAction.ENGLISH, ControlAction.NUMBER, ControlAction.EMOJI,
+                listOf(ControlAction.NUMBER, ControlAction.EMOJI,
                     ControlAction.SPACE, ControlAction.TONE_SELECT),
-                listOf("ABC", "123", "☺", "一聲", "選定")
+                ImeBehavior.zhuyinControlLabels(showFinalPage = true)
             )
             mode == Mode.ZHUYIN -> Pair(
-                listOf(ControlAction.ENGLISH, ControlAction.NUMBER, ControlAction.EMOJI,
+                listOf(ControlAction.NUMBER, ControlAction.EMOJI,
                     ControlAction.SPACE, ControlAction.RETURN),
-                listOf("ABC", "123", "☺", "空白", "換行")
+                ImeBehavior.zhuyinControlLabels(showFinalPage = false)
             )
             mode == Mode.ENGLISH -> Pair(
-                listOf(textModeAction, ControlAction.NUMBER, ControlAction.EMOJI,
+                listOf(ControlAction.NUMBER, ControlAction.EMOJI,
                     ControlAction.SPACE, ControlAction.RETURN),
-                listOf(textModeLabel, "123", "☺", "space", "return")
+                listOf("123", "☺", "space", "return")
             )
             mode == Mode.NUMBER && !zhuyinModeAllowed -> Pair(
                 listOf(ControlAction.ENGLISH, ControlAction.SYMBOL, ControlAction.EMOJI,
@@ -400,9 +441,9 @@ class ZhuyinKeyboardView @JvmOverloads constructor(
                 listOf("ABC", "#+=", "☺", "空白", "換行", "⌫")
             )
             mode == Mode.NUMBER -> Pair(
-                listOf(textModeAction, ControlAction.ENGLISH, ControlAction.SYMBOL,
+                listOf(ControlAction.TOGGLE_FINALS, ControlAction.SYMBOL, ControlAction.EMOJI,
                     ControlAction.SPACE, ControlAction.RETURN, ControlAction.BACKSPACE),
-                listOf(textModeLabel, "ABC", "#+=", "空白", "換行", "⌫")
+                listOf("注", "#+=", "☺", "空白", "換行", "⌫")
             )
             mode == Mode.SYMBOL && !zhuyinModeAllowed -> Pair(
                 listOf(ControlAction.ENGLISH, ControlAction.NUMBER, ControlAction.EMOJI,
@@ -410,38 +451,22 @@ class ZhuyinKeyboardView @JvmOverloads constructor(
                 listOf("ABC", "123", "☺", "空白", "換行", "⌫")
             )
             mode == Mode.SYMBOL -> Pair(
-                listOf(textModeAction, ControlAction.ENGLISH, ControlAction.NUMBER,
+                listOf(ControlAction.TOGGLE_FINALS, ControlAction.NUMBER, ControlAction.EMOJI,
                     ControlAction.SPACE, ControlAction.RETURN, ControlAction.BACKSPACE),
-                listOf(textModeLabel, "ABC", "123", "空白", "換行", "⌫")
+                listOf("注", "123", "☺", "空白", "換行", "⌫")
             )
             else -> Pair(
                 listOf(ControlAction.SPACE, ControlAction.RETURN, ControlAction.BACKSPACE),
                 listOf("空白", "換行", "⌫")
             )
         }
-        val weights = when (mode) {
-            Mode.ZHUYIN -> listOf(
-                metrics.functionKeyWidth,
-                metrics.functionKeyWidth,
-                metrics.functionKeyWidth,
-                metrics.spacebarWidthRatio,
-                metrics.returnKeyWidthRatio
-            )
-            Mode.ENGLISH -> listOf(
-                metrics.functionKeyWidth,
-                metrics.functionKeyWidth,
-                metrics.functionKeyWidth,
-                metrics.spacebarWidthRatio,
-                metrics.returnKeyWidthRatio
-            )
-            else -> listOf(
-                metrics.functionKeyWidth,
-                1.0f,
-                1.2f,
-                metrics.spacebarWidthRatio,
-                1.1f,
-                metrics.functionKeyWidth
-            )
+        val weights = actions.map { action ->
+            when (action) {
+                ControlAction.SPACE -> metrics.spacebarWidthRatio
+                ControlAction.RETURN,
+                ControlAction.TONE_SELECT -> metrics.returnKeyWidthRatio
+                else -> metrics.functionKeyWidth
+            }
         }
         val totalW = weights.sum()
         val totalSpacing = controlSpacing * (weights.size + 1)
@@ -455,13 +480,72 @@ class ZhuyinKeyboardView @JvmOverloads constructor(
 
         // 聲調面板: AFTER_FINAL 時聲調在 controlKeys 內 (iOS 26 風格), 不需要額外 toneRects
         toneRects.clear()
-        // 字型大小
+        layoutCandidateCells()
+        updateTextSizes()
+    }
+
+    private fun updateTextSizes() {
         paintKeyText.textSize = min(keyH * 0.70f, dp(metrics.keyFontSize))
         paintControlText.textSize = min(controlH * 0.50f, dp(metrics.controlFontSize))
         paintComposition.textSize = dp(metrics.compositionFontSize)
         paintCandidateText.textSize = dp(metrics.candidateFontSize)
         paintToneText.textSize = min(keyH * 0.55f, dp(metrics.toneFontSize))
         paintKeyHint.textSize = dp(metrics.hintFontSize)
+    }
+
+    private fun layoutCandidateCells() {
+        candidateCells.clear()
+        candidateToggleRect = RectF()
+        candidateContentHeight = 0f
+        if (candidateBarRect.height() <= 0f || candidates.isEmpty()) return
+
+        val padInner = dp(metrics.candidateInnerPadding)
+        val gap = dp(metrics.candidateGap)
+        val toggleWidth = if (hasMoreCandidates) dp(metrics.candidateMoreWidth) else 0f
+        if (hasMoreCandidates) {
+            candidateToggleRect = RectF(
+                candidateBarRect.right - padInner - toggleWidth,
+                candidateBarRect.top + padInner,
+                candidateBarRect.right - padInner,
+                candidateBarRect.top + candidateBarHeight - padInner
+            )
+        }
+
+        val columns = ImeBehavior.candidatePageSize(candidates)
+        val gridRight = if (hasMoreCandidates) {
+            candidateBarRect.right - padInner - toggleWidth - gap
+        } else {
+            candidateBarRect.right - padInner
+        }
+        val gridWidth = (gridRight - candidateBarRect.left - padInner).coerceAtLeast(1f)
+        val cellWidth = ((gridWidth - gap * (columns + 1)) / columns).coerceAtLeast(1f)
+        val cellHeight = (candidateBarHeight - padInner * 2).coerceAtLeast(1f)
+        val visibleIndices = if (candidateExpanded) {
+            candidates.indices
+        } else {
+            val end = (candidatePageStart + columns).coerceAtMost(candidates.size)
+            candidatePageStart until end
+        }
+        val rowCount = CandidatePanelBehavior.rowCount(visibleIndices.count(), columns)
+        candidateContentHeight = padInner * 2 + rowCount * cellHeight +
+            (rowCount - 1).coerceAtLeast(0) * gap
+        candidateScrollOffset = CandidatePanelBehavior.clampScroll(
+            candidateScrollOffset,
+            candidateContentHeight,
+            candidateBarRect.height()
+        )
+
+        visibleIndices.forEachIndexed { localIndex, candidateIndex ->
+            val row = localIndex / columns
+            val column = localIndex % columns
+            val left = candidateBarRect.left + padInner + gap + column * (cellWidth + gap)
+            val top = candidateBarRect.top + padInner +
+                row * (cellHeight + gap) - candidateScrollOffset
+            candidateCells += CandidateCell(
+                candidateIndex,
+                RectF(left, top, left + cellWidth, top + cellHeight)
+            )
+        }
     }
 
     fun refresh() {
@@ -581,42 +665,47 @@ class ZhuyinKeyboardView @JvmOverloads constructor(
         // Candidate bar
         if (candidateBarRect.height() > 0) {
             drawRect(canvas, candidateBarRect, Color.parseColor("#E5E7EB"))
-            val cands = candidates.take(9)
-            val n = cands.size.coerceAtLeast(1)
-            val padInner = dp(metrics.candidateInnerPadding)
-            val candSpacing = dp(metrics.candidateGap)
-            val moreW = if (hasMoreCandidates) dp(metrics.candidateMoreWidth) + candSpacing else 0f
-            val candTotalW = candidateBarRect.width() - padInner * 2 - moreW
-            val candW = (candTotalW - candSpacing * (n + 1)) / n
-            for ((i, c) in cands.withIndex()) {
-                val x = candidateBarRect.left + padInner + candSpacing + i * (candW + candSpacing)
-                val r = RectF(x, candidateBarRect.top + padInner, x + candW, candidateBarRect.bottom - padInner)
-                val bg = if (i == selectedCandidateIndex) Color.parseColor("#C7CCD4") else Color.WHITE
-                drawRoundRect(canvas, r, bg, dp(metrics.candidateCornerRadius))
-                val cy = r.centerY() - (paintCandidateText.ascent() + paintCandidateText.descent()) / 2
-                canvas.drawText(c, r.centerX(), cy, paintCandidateText)
+            canvas.save()
+            canvas.clipRect(candidateBarRect)
+            for (cell in candidateCells) {
+                if (!RectF.intersects(candidateBarRect, cell.rect)) continue
+                val bg = if (cell.candidateIndex == selectedCandidateIndex) {
+                    Color.parseColor("#C7CCD4")
+                } else {
+                    Color.WHITE
+                }
+                drawRoundRect(canvas, cell.rect, bg, dp(metrics.candidateCornerRadius))
+                val cy = cell.rect.centerY() -
+                    (paintCandidateText.ascent() + paintCandidateText.descent()) / 2
+                canvas.drawText(
+                    candidates[cell.candidateIndex],
+                    cell.rect.centerX(),
+                    cy,
+                    paintCandidateText
+                )
             }
-            if (hasMoreCandidates && cands.isNotEmpty()) {
-                val moreX = candidateBarRect.right - padInner - dp(metrics.candidateMoreWidth)
-                val moreR = RectF(moreX, candidateBarRect.top + padInner,
-                    candidateBarRect.right - padInner, candidateBarRect.bottom - padInner)
-                drawRoundRect(canvas, moreR, Color.parseColor("#D1D5DB"), dp(metrics.candidateCornerRadius))
-                val cy = moreR.centerY() - (paintCandidateText.ascent() + paintCandidateText.descent()) / 2
-                val saved = paintCandidateText.textSize
-                paintCandidateText.textSize = dp(metrics.candidateMoreFontSize)
-                canvas.drawText("▶", moreR.centerX(), cy, paintCandidateText)
-                paintCandidateText.textSize = saved
+            canvas.restore()
+            if (candidateToggleRect.height() > 0f) {
+                drawRoundRect(
+                    canvas,
+                    candidateToggleRect,
+                    Color.parseColor("#D1D5DB"),
+                    dp(metrics.candidateCornerRadius)
+                )
+                drawCandidateToggleIcon(canvas, candidateToggleRect, candidateExpanded)
             }
-
         }
 
         // === 4×8 注音按鍵 (v45.1 動態 enable/disable + 淡入淡出動畫) ===
         for ((i, k) in zhuyinKeys.withIndex()) {
             if (k.label.isEmpty()) continue
             val isPressed = (i == pressedKeyIdx)
+            val isFunctionKey = k.isToggle || k.label == "⌫"
 
             val bgColor = when {
+                isPressed && isFunctionKey -> colorControlBgPressed
                 isPressed -> colorKeyBgPressed
+                isFunctionKey -> colorControlBg
                 else -> colorKeyBg
             }
             drawRoundRect(canvas, k.rect, bgColor, cornerRadius)
@@ -680,8 +769,13 @@ class ZhuyinKeyboardView @JvmOverloads constructor(
                     val c = if (isPressed) colorControlBgPressed else colorControlBg
                     drawRoundRect(canvas, k.rect, c, cornerRadius)
                     paintControlText.color = colorControlText
-                    val cy = k.rect.centerY() - (paintControlText.ascent() + paintControlText.descent()) / 2
-                    canvas.drawText(k.label, k.rect.centerX(), cy, paintControlText)
+                    if (k.action == ControlAction.EMOJI) {
+                        drawMonochromeEmojiIcon(canvas, k.rect, colorControlText)
+                    } else {
+                        val cy = k.rect.centerY() -
+                            (paintControlText.ascent() + paintControlText.descent()) / 2
+                        canvas.drawText(k.label, k.rect.centerX(), cy, paintControlText)
+                    }
                 }
             }
         }
@@ -740,6 +834,57 @@ class ZhuyinKeyboardView @JvmOverloads constructor(
         canvas.drawRect(r, paintRoundRect)
     }
 
+    private fun drawCandidateToggleIcon(canvas: Canvas, rect: RectF, expanded: Boolean) {
+        val halfWidth = min(rect.width(), rect.height()) * 0.18f
+        val halfHeight = halfWidth * 0.55f
+        val centerX = rect.centerX()
+        val centerY = rect.centerY()
+        paintRoundRect.color = colorKeyText
+        paintRoundRect.style = Paint.Style.STROKE
+        paintRoundRect.strokeWidth = dp(1.8f)
+        paintRoundRect.strokeCap = Paint.Cap.ROUND
+        val path = Path()
+        if (expanded) {
+            path.moveTo(centerX - halfWidth, centerY - halfHeight)
+            path.lineTo(centerX, centerY + halfHeight)
+            path.lineTo(centerX + halfWidth, centerY - halfHeight)
+        } else {
+            path.moveTo(centerX - halfWidth, centerY + halfHeight)
+            path.lineTo(centerX, centerY - halfHeight)
+            path.lineTo(centerX + halfWidth, centerY + halfHeight)
+        }
+        canvas.drawPath(path, paintRoundRect)
+        paintRoundRect.strokeCap = Paint.Cap.BUTT
+        paintRoundRect.style = Paint.Style.FILL
+    }
+
+    private fun drawMonochromeEmojiIcon(canvas: Canvas, rect: RectF, color: Int) {
+        val radius = min(rect.width(), rect.height()) * 0.22f
+        val centerX = rect.centerX()
+        val centerY = rect.centerY()
+        paintRoundRect.color = color
+        paintRoundRect.style = Paint.Style.STROKE
+        paintRoundRect.strokeWidth = dp(1.5f)
+        canvas.drawCircle(centerX, centerY, radius, paintRoundRect)
+        paintRoundRect.style = Paint.Style.FILL
+        val eyeRadius = dp(1.2f)
+        canvas.drawCircle(centerX - radius * 0.36f, centerY - radius * 0.22f, eyeRadius, paintRoundRect)
+        canvas.drawCircle(centerX + radius * 0.36f, centerY - radius * 0.22f, eyeRadius, paintRoundRect)
+        paintRoundRect.style = Paint.Style.STROKE
+        paintRoundRect.strokeWidth = dp(1.5f)
+        canvas.drawArc(
+            centerX - radius * 0.48f,
+            centerY - radius * 0.02f,
+            centerX + radius * 0.48f,
+            centerY + radius * 0.55f,
+            12f,
+            156f,
+            false,
+            paintRoundRect
+        )
+        paintRoundRect.style = Paint.Style.FILL
+    }
+
     // ============================================================
     // 觸控
     // ============================================================
@@ -749,6 +894,7 @@ class ZhuyinKeyboardView @JvmOverloads constructor(
     private sealed class TouchTarget {
         data class Candidate(val idx: Int) : TouchTarget()
         object MorePage : TouchTarget()
+        object CandidatePanel : TouchTarget()
         object Composition : TouchTarget()
         data class ZhuyinKey(val idx: Int) : TouchTarget()
         data class ControlKey(val idx: Int) : TouchTarget()
@@ -760,6 +906,9 @@ class ZhuyinKeyboardView @JvmOverloads constructor(
             MotionEvent.ACTION_DOWN -> {
                 val t = findTarget(event.x, event.y)
                 downTarget = t
+                candidateDragStartY = event.y
+                candidateDragStartOffset = candidateScrollOffset
+                candidateDragging = false
                 pressedKeyIdx = (t as? TouchTarget.ZhuyinKey)?.idx ?: -1
                 pressedControlIdx = (t as? TouchTarget.ControlKey)?.idx ?: -1
                 pressedToneIdx = (t as? TouchTarget.ToneKey)?.idx ?: -1
@@ -773,6 +922,23 @@ class ZhuyinKeyboardView @JvmOverloads constructor(
                 return t != null
             }
             MotionEvent.ACTION_MOVE -> {
+                if (candidateExpanded && candidateBarRect.contains(event.x, event.y) &&
+                    (downTarget is TouchTarget.Candidate ||
+                        downTarget is TouchTarget.CandidatePanel)
+                ) {
+                    val dragDistance = event.y - candidateDragStartY
+                    if (candidateDragging || abs(dragDistance) > candidateTouchSlop) {
+                        candidateDragging = true
+                        candidateScrollOffset = CandidatePanelBehavior.clampScroll(
+                            candidateDragStartOffset - dragDistance,
+                            candidateContentHeight,
+                            candidateBarRect.height()
+                        )
+                        layoutCandidateCells()
+                        invalidate()
+                        return true
+                    }
+                }
                 val t = findTarget(event.x, event.y)
                 val newP = (t as? TouchTarget.ZhuyinKey)?.idx ?: -1
                 val newC = (t as? TouchTarget.ControlKey)?.idx ?: -1
@@ -791,7 +957,7 @@ class ZhuyinKeyboardView @JvmOverloads constructor(
             }
             MotionEvent.ACTION_UP -> {
                 val t = findTarget(event.x, event.y)
-                if (t != null && t == downTarget) {
+                if (!candidateDragging && t != null && t == downTarget) {
                     handleTarget(t)
                 }
                 if (isBackspaceDown) {
@@ -802,6 +968,7 @@ class ZhuyinKeyboardView @JvmOverloads constructor(
                 pressedToneIdx = -1
                 downTarget = null
                 isBackspaceDown = false
+                candidateDragging = false
                 invalidate()
                 return true
             }
@@ -814,6 +981,7 @@ class ZhuyinKeyboardView @JvmOverloads constructor(
                 pressedToneIdx = -1
                 downTarget = null
                 isBackspaceDown = false
+                candidateDragging = false
                 invalidate()
                 return true
             }
@@ -826,23 +994,13 @@ class ZhuyinKeyboardView @JvmOverloads constructor(
             return TouchTarget.Composition
         }
         if (candidateBarRect.height() > 0 && candidateBarRect.contains(x, y)) {
-            val cands = candidates.take(9)
-            if (cands.isNotEmpty()) {
-                val n = cands.size
-                val padInner = dp(metrics.candidateInnerPadding)
-                val candSpacing = dp(metrics.candidateGap)
-                val moreW = if (hasMoreCandidates) dp(metrics.candidateMoreWidth) + candSpacing else 0f
-                val moreX = candidateBarRect.right - padInner - dp(metrics.candidateMoreWidth)
-                if (hasMoreCandidates && x > moreX) {
-                    return TouchTarget.MorePage
-                }
-                val candTotalW = candidateBarRect.width() - padInner * 2 - moreW
-                val candW = (candTotalW - candSpacing * (n + 1)) / n
-                val idx = ((x - candidateBarRect.left - padInner) / (candW + candSpacing)).toInt()
-                if (idx in 0 until n && idx < cands.size) {
-                    return TouchTarget.Candidate(idx)
-                }
+            if (candidateToggleRect.contains(x, y)) {
+                return TouchTarget.MorePage
             }
+            candidateCells.firstOrNull { cell ->
+                RectF.intersects(candidateBarRect, cell.rect) && cell.rect.contains(x, y)
+            }?.let { return TouchTarget.Candidate(it.candidateIndex) }
+            return TouchTarget.CandidatePanel
         }
         // 控制列 (優先於注音, 因為 y 範圍不會撞)
         for ((i, k) in controlKeys.withIndex()) {
@@ -858,10 +1016,10 @@ class ZhuyinKeyboardView @JvmOverloads constructor(
     private fun handleTarget(t: TouchTarget) {
         when (t) {
             is TouchTarget.Candidate -> {
-                val cands = candidates.take(9)
-                if (t.idx in cands.indices) onCandidatePress?.invoke(cands[t.idx])
+                candidates.getOrNull(t.idx)?.let { onCandidatePress?.invoke(it) }
             }
-            is TouchTarget.MorePage -> onNextCandidatesPage?.invoke()
+            is TouchTarget.MorePage -> onCandidateExpansionToggle?.invoke()
+            is TouchTarget.CandidatePanel -> {}
             is TouchTarget.Composition -> {}  // 點 compose bar 不做事
             is TouchTarget.ControlKey -> {
                 when (controlKeys[t.idx].action) {

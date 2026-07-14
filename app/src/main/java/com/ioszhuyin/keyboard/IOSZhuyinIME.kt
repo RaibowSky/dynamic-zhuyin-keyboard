@@ -24,6 +24,7 @@ class IOSZhuyinIME : InputMethodService() {
     private var allCandidates: List<String> = emptyList()
     private var selectedCandidateIndex: Int = -1
     private var candidatePage: Int = 0
+    private var candidatesExpanded: Boolean = false
     private var activeSegmentStart: Int = 0
     private var activeSegmentEnd: Int = 0
     private var showFinalPage: Boolean = false
@@ -136,7 +137,7 @@ class IOSZhuyinIME : InputMethodService() {
         view.onReturn = { handleReturn() }
         view.onSwitchIme = { switchKeyboard() }
         view.onCandidatePress = { candidate -> commitSelectedCandidate(candidate) }
-        view.onNextCandidatesPage = { nextCandidatePage() }
+        view.onCandidateExpansionToggle = { toggleCandidateExpansion() }
         view.onEnglishMode = { handleEnglishMode() }
         view.onNumberMode = { handleNumberMode() }
         view.onSymbolMode = { handleSymbolMode() }
@@ -185,11 +186,13 @@ class IOSZhuyinIME : InputMethodService() {
     }
 
     private fun refreshCandidates(resetSelection: Boolean) {
+        if (resetSelection) candidatesExpanded = false
         val raw = composingText.toString()
         if (raw.isEmpty()) {
             allCandidates = emptyList()
             selectedCandidateIndex = -1
             candidatePage = 0
+            candidatesExpanded = false
             activeSegmentStart = 0
             activeSegmentEnd = 0
             syncKeyboardView()
@@ -219,25 +222,20 @@ class IOSZhuyinIME : InputMethodService() {
         val view = keyboardView ?: return
         val pageSize = ImeBehavior.candidatePageSize(allCandidates)
         val start = candidatePage * pageSize
-        val pageCandidates = allCandidates.drop(start).take(pageSize)
-        view.candidates = pageCandidates
-        view.hasMoreCandidates = allCandidates.size > pageSize
-        view.selectedCandidateIndex =
-            if (selectedCandidateIndex in start until start + pageCandidates.size) {
-                selectedCandidateIndex - start
-            } else {
-                -1
-            }
+        view.updateCandidateState(
+            newCandidates = allCandidates,
+            pageStart = start,
+            selectedIndex = selectedCandidateIndex,
+            hasMore = allCandidates.size > pageSize,
+            expanded = candidatesExpanded
+        )
         view.setFinalPage(showFinalPage)
         view.refresh()
     }
 
-    private fun nextCandidatePage() {
-        if (allCandidates.isEmpty()) return
-        val pageSize = ImeBehavior.candidatePageSize(allCandidates)
-        val pages = (allCandidates.size + pageSize - 1) / pageSize
-        candidatePage = (candidatePage + 1) % pages
-        selectedCandidateIndex = candidatePage * pageSize
+    private fun toggleCandidateExpansion() {
+        if (allCandidates.size <= ImeBehavior.candidatePageSize(allCandidates)) return
+        candidatesExpanded = !candidatesExpanded
         syncKeyboardView()
         vibrateLight()
     }
@@ -420,6 +418,7 @@ class IOSZhuyinIME : InputMethodService() {
         allCandidates = emptyList()
         selectedCandidateIndex = -1
         candidatePage = 0
+        candidatesExpanded = false
         activeSegmentStart = 0
         activeSegmentEnd = 0
         showFinalPage = false
