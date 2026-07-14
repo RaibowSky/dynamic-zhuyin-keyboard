@@ -2,6 +2,7 @@ package com.ioszhuyin.keyboard
 
 import android.app.AlertDialog
 import android.content.Intent
+import android.content.SharedPreferences
 import android.content.res.ColorStateList
 import android.net.Uri
 import android.os.Bundle
@@ -27,15 +28,54 @@ class MainActivity : AppCompatActivity() {
     private lateinit var wordInput: EditText
     private lateinit var searchInput: EditText
     private lateinit var statusText: TextView
+    private lateinit var learningStatusText: TextView
+    private lateinit var learningToggleButton: Button
 
     private var entries: List<UserDictionaryEntry> = emptyList()
     private var selectedEntry: UserDictionaryEntry? = null
+    private val learningPreferencesListener =
+        SharedPreferences.OnSharedPreferenceChangeListener { _, key ->
+            if (CandidateLearningSettings.isRecordsChange(key)) {
+                runOnUiThread {
+                    if (::learningStatusText.isInitialized) refreshLearningStatus()
+                }
+            }
+        }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         store = UserDictionaryStore(this)
         buildLayout()
         refreshList()
+    }
+
+    override fun onDestroy() {
+        if (::store.isInitialized) store.close()
+        super.onDestroy()
+    }
+
+    override fun onStart() {
+        super.onStart()
+        CandidateLearningSettings.registerListener(this, learningPreferencesListener)
+    }
+
+    override fun onStop() {
+        CandidateLearningSettings.unregisterListener(this, learningPreferencesListener)
+        super.onStop()
+    }
+
+    override fun onResume() {
+        super.onResume()
+        if (::learningStatusText.isInitialized && ::learningToggleButton.isInitialized) {
+            refreshLearningStatus()
+        }
+    }
+
+    override fun onWindowFocusChanged(hasFocus: Boolean) {
+        super.onWindowFocusChanged(hasFocus)
+        if (hasFocus && ::learningStatusText.isInitialized && ::learningToggleButton.isInitialized) {
+            refreshLearningStatus()
+        }
     }
 
     @Deprecated("Used for simple document import/export on older AndroidX setup.")
@@ -45,7 +85,8 @@ class MainActivity : AppCompatActivity() {
         val uri = data?.data ?: return
         when (requestCode) {
             REQUEST_IMPORT -> importDictionary(uri)
-            REQUEST_EXPORT -> exportDictionary(uri)
+            REQUEST_EXPORT_DICTIONARY -> exportDictionary(uri, includeLearning = false)
+            REQUEST_EXPORT_WITH_LEARNING -> exportDictionary(uri, includeLearning = true)
             REQUEST_OVERLAY -> setOverlayImage(uri, data)
         }
     }
@@ -93,6 +134,27 @@ class MainActivity : AppCompatActivity() {
         }
         root.addView(statusText, LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT)
 
+        learningStatusText = TextView(this).apply {
+            textSize = 14f
+            setTextColor(0xFF4B5563.toInt())
+            setPadding(0, dp(4), 0, dp(8))
+        }
+        root.addView(
+            learningStatusText,
+            LinearLayout.LayoutParams.MATCH_PARENT,
+            LinearLayout.LayoutParams.WRAP_CONTENT
+        )
+
+        val learningRow = row()
+        learningToggleButton = button("", 0xFF7C3AED.toInt()) { toggleLearning() }
+        learningRow.addView(learningToggleButton, rowWeight())
+        learningRow.addView(
+            button("清除學習紀錄", 0xFFDC2626.toInt()) { confirmClearLearning() },
+            rowWeight()
+        )
+        root.addView(learningRow)
+        refreshLearningStatus()
+
         zhuyinInput = editText("注音，例如 ㄇㄚ˙")
         wordInput = editText("詞彙，例如 嗎")
         root.addView(zhuyinInput)
@@ -119,7 +181,7 @@ class MainActivity : AppCompatActivity() {
 
         val fileRow = row()
         fileRow.addView(button("匯入", 0xFF0891B2.toInt()) { openImportFile() }, rowWeight())
-        fileRow.addView(button("匯出", 0xFF059669.toInt()) { openExportFile() }, rowWeight())
+        fileRow.addView(button("匯出", 0xFF059669.toInt()) { chooseExportContent() }, rowWeight())
         root.addView(fileRow)
 
         if (isDebugBuild()) {
@@ -142,7 +204,7 @@ class MainActivity : AppCompatActivity() {
         root.addView(listView, LinearLayout.LayoutParams.MATCH_PARENT, dp(260))
 
         val info = TextView(this).apply {
-            text = "匯入支援 JSON，或每行「注音<TAB>詞彙」的 TSV。使用者字典候選會排在最前面，且會自動去除重複候選。"
+            text = "匯入支援 JSON，或每行「注音<TAB>詞彙」的 TSV。一般匯出只包含手動新增詞彙；候選學習紀錄必須另外選擇並確認風險。"
             textSize = 13f
             setTextColor(0xFF6B7280.toInt())
             setPadding(0, dp(12), 0, 0)
@@ -208,6 +270,42 @@ class MainActivity : AppCompatActivity() {
         statusText.text = "使用者字典：${entries.size} 筆"
     }
 
+    private fun refreshLearningStatus() {
+        val enabled = CandidateLearningSettings.isEnabled(this)
+        val count = store.learningEntryCount()
+        learningStatusText.text = if (enabled) {
+            "候選學習：開啟（$count 筆排序紀錄）"
+        } else {
+            "候選學習：暫停（保留 $count 筆既有排序紀錄）"
+        }
+        learningToggleButton.text = if (enabled) "暫停學習" else "繼續學習"
+    }
+
+    private fun toggleLearning() {
+        val enabled = !CandidateLearningSettings.isEnabled(this)
+        CandidateLearningSettings.setEnabled(this, enabled)
+        refreshLearningStatus()
+        toast(if (enabled) "已繼續候選學習" else "已暫停新增候選學習")
+    }
+
+    private fun confirmClearLearning() {
+        val count = store.learningEntryCount()
+        if (count == 0) {
+            toast("目前沒有候選學習紀錄")
+            return
+        }
+        AlertDialog.Builder(this)
+            .setTitle("清除候選學習紀錄")
+            .setMessage("確定清除 $count 筆候選排序紀錄嗎？手動新增的使用者詞彙不會被刪除。")
+            .setPositiveButton("清除") { _, _ ->
+                val deleted = store.clearLearning()
+                refreshLearningStatus()
+                toast("已清除 $deleted 筆候選學習紀錄")
+            }
+            .setNegativeButton("取消", null)
+            .show()
+    }
+
     private fun clearSelection() {
         selectedEntry = null
         zhuyinInput.setText("")
@@ -223,31 +321,91 @@ class MainActivity : AppCompatActivity() {
         startActivityForResult(intent, REQUEST_IMPORT)
     }
 
-    private fun openExportFile() {
+    private fun chooseExportContent() {
+        AlertDialog.Builder(this)
+            .setTitle("匯出內容")
+            .setItems(
+                arrayOf(
+                    "只匯出手動新增詞彙（建議）",
+                    "包含候選學習紀錄"
+                )
+            ) { _, selected ->
+                if (selected == 0) {
+                    openExportFile(includeLearning = false)
+                } else {
+                    confirmLearningExport()
+                }
+            }
+            .setNegativeButton("取消", null)
+            .show()
+    }
+
+    private fun confirmLearningExport() {
+        AlertDialog.Builder(this)
+            .setTitle("學習紀錄可能包含私人資訊")
+            .setMessage(
+                "候選學習紀錄可能包含人名、地址、公司名稱或其他私人用詞。" +
+                    "匯出檔不會加密，請妥善保管並避免分享給他人。"
+            )
+            .setPositiveButton("了解，繼續匯出") { _, _ ->
+                openExportFile(includeLearning = true)
+            }
+            .setNegativeButton("取消", null)
+            .show()
+    }
+
+    private fun openExportFile(includeLearning: Boolean) {
         val intent = Intent(Intent.ACTION_CREATE_DOCUMENT).apply {
             addCategory(Intent.CATEGORY_OPENABLE)
             type = "application/json"
-            putExtra(Intent.EXTRA_TITLE, "zhuyin_user_dictionary.json")
+            putExtra(
+                Intent.EXTRA_TITLE,
+                if (includeLearning) {
+                    "zhuyin_user_dictionary_with_learning.json"
+                } else {
+                    "zhuyin_user_dictionary.json"
+                }
+            )
         }
-        startActivityForResult(intent, REQUEST_EXPORT)
+        startActivityForResult(
+            intent,
+            if (includeLearning) {
+                REQUEST_EXPORT_WITH_LEARNING
+            } else {
+                REQUEST_EXPORT_DICTIONARY
+            }
+        )
     }
 
     private fun importDictionary(uri: Uri) {
         runCatching {
             store.importFromUri(contentResolver, uri)
-        }.onSuccess { count ->
+        }.onSuccess { result ->
             refreshList()
-            toast("已匯入 $count 筆詞彙")
+            refreshLearningStatus()
+            toast(
+                if (result.learning > 0) {
+                    "已匯入 ${result.entries} 筆詞彙、${result.learning} 筆學習紀錄"
+                } else {
+                    "已匯入 ${result.entries} 筆詞彙"
+                }
+            )
         }.onFailure {
             toast(it.message ?: "匯入失敗")
         }
     }
 
-    private fun exportDictionary(uri: Uri) {
+    private fun exportDictionary(uri: Uri, includeLearning: Boolean) {
         runCatching {
-            store.exportToUri(contentResolver, uri)
+            store.exportToUri(contentResolver, uri, includeLearning)
         }.onSuccess {
-            toast("已匯出使用者字典")
+            toast(
+                if (includeLearning) {
+                    "已匯出使用者字典與學習紀錄"
+                } else {
+                    "已匯出使用者字典"
+                }
+            )
         }.onFailure {
             toast(it.message ?: "匯出失敗")
         }
@@ -523,8 +681,9 @@ class MainActivity : AppCompatActivity() {
 
     companion object {
         private const val REQUEST_IMPORT = 1001
-        private const val REQUEST_EXPORT = 1002
+        private const val REQUEST_EXPORT_DICTIONARY = 1002
         private const val REQUEST_OVERLAY = 1003
+        private const val REQUEST_EXPORT_WITH_LEARNING = 1004
         private const val SLIDER_SCALE = 10f
     }
 }

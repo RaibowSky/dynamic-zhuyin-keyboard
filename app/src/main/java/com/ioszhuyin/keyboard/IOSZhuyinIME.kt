@@ -1,12 +1,12 @@
 package com.ioszhuyin.keyboard
 
-import android.content.Context
 import android.graphics.Typeface
 import android.inputmethodservice.InputMethodService
 import android.os.Build
 import android.os.Handler
 import android.os.Looper
 import android.os.VibrationEffect
+import android.util.Log
 import android.view.KeyEvent
 import android.view.View
 import android.view.inputmethod.EditorInfo
@@ -28,10 +28,7 @@ class IOSZhuyinIME : InputMethodService() {
     private var activeSegmentEnd: Int = 0
     private var showFinalPage: Boolean = false
 
-    private val freq = mutableMapOf<String, Int>()
-    private val PREFS_NAME = "zhuyin_freq"
-    private val FREQ_KEY = "freq_data"
-    private var learningAllowed = false
+    private var personalizationAllowed = false
 
     private data class ZhuyinSegment(
         val text: String,
@@ -40,43 +37,31 @@ class IOSZhuyinIME : InputMethodService() {
         val hasTone: Boolean
     )
 
-    private fun loadFreq() {
-        freq.clear()
-        val prefs = getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-        val raw = prefs.getString(FREQ_KEY, "") ?: ""
-        if (raw.isNotEmpty()) {
-            raw.split("|").forEach { entry ->
-                val parts = entry.split(":", limit = 2)
-                if (parts.size == 2) freq[parts[0]] = parts[1].toIntOrNull() ?: 0
-            }
+    private fun wordSelected(reading: String, word: String) {
+        if (!personalizationAllowed || !CandidateLearningSettings.isEnabled(this)) return
+        runCatching {
+            userDictionaryStore.recordSelection(reading, word)
+            CandidateLearningSettings.notifyRecordsChanged(this)
+        }.onFailure {
+            Log.w(TAG, "Unable to record candidate learning", it)
         }
     }
 
-    private fun saveFreq() {
-        if (!learningAllowed) return
-        getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE).edit()
-            .putString(FREQ_KEY, freq.entries.joinToString("|") { "${it.key}:${it.value}" })
-            .apply()
-    }
-
-    private fun wordSelected(word: String) {
-        if (!learningAllowed) return
-        freq[word] = (freq[word] ?: 0) + 1
-        saveFreq()
-    }
-
     private fun getSortedCandidates(raw: String): List<String> {
-        if (!learningAllowed) return candidatesForKey(raw)
+        val dictionaryCandidates = candidatesForKey(raw)
+        if (!personalizationAllowed) return dictionaryCandidates
+
         val userCandidates = userCandidatesForKey(raw)
-        val userCandidateSet = userCandidates.toSet()
-        val dict = candidatesForKey(raw)
-            .filter { it !in userCandidateSet }
-            .sortedWith(compareByDescending<String> { freq[it] ?: 0 })
-        return userCandidates + dict
+        val learnedCounts = runCatching {
+            userDictionaryStore.getLearningCounts(lookupVariants(raw))
+        }.onFailure {
+            Log.w(TAG, "Unable to load candidate learning", it)
+        }.getOrDefault(emptyMap())
+        return CandidateRanking.order(userCandidates, dictionaryCandidates, learnedCounts)
     }
 
     private fun userCandidatesForKey(raw: String): List<String> {
-        if (!learningAllowed || !::userDictionaryStore.isInitialized) return emptyList()
+        if (!personalizationAllowed || !::userDictionaryStore.isInitialized) return emptyList()
         return userDictionaryStore.getCandidates(lookupVariants(raw))
     }
 
@@ -107,6 +92,7 @@ class IOSZhuyinIME : InputMethodService() {
         @Suppress("DEPRECATION")
         vibrator = getSystemService(VIBRATOR_SERVICE) as? android.os.Vibrator
         userDictionaryStore = UserDictionaryStore(this)
+        migrateLegacyLearning()
         ZhuyinDictionary.initialize(this)
         bopomofoTypeface = try {
             val outFile = File(cacheDir, "bopomofo.ttf")
@@ -123,7 +109,6 @@ class IOSZhuyinIME : InputMethodService() {
 
     override fun onDestroy() {
         stopBackspaceRepeat()
-        saveFreq()
         if (::userDictionaryStore.isInitialized) userDictionaryStore.close()
         keyboardView = null
         super.onDestroy()
@@ -278,11 +263,12 @@ class IOSZhuyinIME : InputMethodService() {
         val candidate = candidateOverride
             ?: allCandidates.getOrNull(selectedCandidateIndex)
             ?: return false
-        ic.commitText(candidate, 1)
-        wordSelected(candidate)
-
         val start = activeSegmentStart.coerceIn(0, composingText.length)
         val end = activeSegmentEnd.coerceIn(start, composingText.length)
+        val reading = composingText.substring(start, end)
+        ic.commitText(candidate, 1)
+        wordSelected(reading, candidate)
+
         composingText.delete(start, end)
         recomputePageFromComposing()
         refreshCandidates(resetSelection = true)
@@ -500,11 +486,10 @@ class IOSZhuyinIME : InputMethodService() {
     override fun onStartInput(attribute: EditorInfo?, restarting: Boolean) {
         stopBackspaceRepeat()
         super.onStartInput(attribute, restarting)
-        learningAllowed = ImeBehavior.allowsPersonalizedLearning(
+        personalizationAllowed = ImeBehavior.allowsPersonalizedLearning(
             inputType = attribute?.inputType,
             imeOptions = attribute?.imeOptions
         )
-        if (learningAllowed) loadFreq()
     }
 
     override fun onStartInputView(info: EditorInfo?, restarting: Boolean) {
@@ -515,15 +500,13 @@ class IOSZhuyinIME : InputMethodService() {
 
     override fun onFinishInputView(finishingInput: Boolean) {
         stopBackspaceRepeat()
-        saveFreq()
         resetToInitial()
         super.onFinishInputView(finishingInput)
     }
 
     override fun onFinishInput() {
         stopBackspaceRepeat()
-        saveFreq()
-        learningAllowed = false
+        personalizationAllowed = false
         super.onFinishInput()
     }
 
@@ -568,6 +551,19 @@ class IOSZhuyinIME : InputMethodService() {
         return variants.filter { it.isNotEmpty() }
     }
 
+    private fun migrateLegacyLearning() {
+        val prefs = getSharedPreferences(LegacyCandidateLearning.PREFS_NAME, MODE_PRIVATE)
+        val raw = prefs.getString(LegacyCandidateLearning.FREQ_KEY, "").orEmpty()
+        if (raw.isEmpty()) return
+
+        runCatching {
+            userDictionaryStore.mergeLegacyLearning(LegacyCandidateLearning.parse(raw))
+            prefs.edit().remove(LegacyCandidateLearning.FREQ_KEY).apply()
+        }.onFailure {
+            Log.w(TAG, "Unable to migrate legacy candidate learning", it)
+        }
+    }
+
     private fun stripTones(raw: String): String =
         raw.filter { it !in TONE_CHARS }
 
@@ -600,6 +596,7 @@ class IOSZhuyinIME : InputMethodService() {
     }
 
     companion object {
+        private const val TAG = "IOSZhuyinIME"
         private const val PAGE_SIZE = 9
         private const val MAX_SYLLABLE_LEN = 3
         private const val MAX_BACKSPACE_CONTEXT = 64

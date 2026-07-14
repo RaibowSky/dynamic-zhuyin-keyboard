@@ -24,8 +24,18 @@ information, or other input content over the network.
 The keyboard may store local candidate selection frequency on the device to
 adjust candidate ordering. This data remains on the device and is not uploaded.
 
-A settings screen for clearing local candidate frequency data has not been added
-yet. If this feature is added later, this policy should be updated.
+Standard exports contain only words manually added by the user and exclude
+candidate-learning records. A user may explicitly choose to include learning
+records after seeing a privacy warning. The exported file is not encrypted and
+may contain names, addresses, or other private terms, so it should be stored
+carefully and not shared casually. Learning-record exports do not include
+selection timestamps.
+
+The settings screen provides controls to pause or resume candidate learning and
+to clear learning records. Pausing stops new records while retaining and using
+existing ordering in ordinary text fields. Password fields and editors that
+request no personalized learning neither record nor apply personalized
+candidate ordering.
 
 ## Permissions
 

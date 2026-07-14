@@ -9,6 +9,26 @@ import org.junit.Test
 
 class ImeBehaviorTest {
     @Test
+    fun candidateRankingKeepsManualEntriesFirstAndTiesStable() {
+        val ordered = CandidateRanking.order(
+            manualCandidates = listOf("自訂", "常用"),
+            dictionaryCandidates = listOf("甲", "自訂", "乙", "丙", "乙"),
+            learnedCounts = mapOf("甲" to 1, "乙" to 4, "丙" to 4, "自訂" to 99)
+        )
+
+        assertEquals(listOf("自訂", "常用", "乙", "丙", "甲"), ordered)
+    }
+
+    @Test
+    fun legacyLearningParserIsLosslessForColonsAndIgnoresInvalidCounts() {
+        val parsed = LegacyCandidateLearning.parse(
+            "字:2|詞:5|無效|負數:-1|冒:號:7|字:3|空白:0"
+        )
+
+        assertEquals(mapOf("字" to 3, "詞" to 5, "冒:號" to 7), parsed)
+    }
+
+    @Test
     fun backspaceRepeaterStopsAcrossReleaseAndRestart() {
         var deletes = 0
         val scheduled = mutableListOf<Pair<Runnable, Long>>()

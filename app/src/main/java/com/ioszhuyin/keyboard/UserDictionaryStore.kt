@@ -3,6 +3,7 @@ package com.ioszhuyin.keyboard
 import android.content.ContentResolver
 import android.content.ContentValues
 import android.content.Context
+import android.database.DatabaseUtils
 import android.database.sqlite.SQLiteDatabase
 import android.database.sqlite.SQLiteOpenHelper
 import android.net.Uri
@@ -15,6 +16,18 @@ data class UserDictionaryEntry(
     val word: String,
     val createdAt: Long,
     val updatedAt: Long
+)
+
+data class CandidateLearningEntry(
+    val reading: String,
+    val word: String,
+    val count: Int,
+    val updatedAt: Long
+)
+
+data class DictionaryImportResult(
+    val entries: Int,
+    val learning: Int
 )
 
 class UserDictionaryStore(context: Context) :
@@ -35,13 +48,33 @@ class UserDictionaryStore(context: Context) :
         )
         db.execSQL("CREATE INDEX idx_user_dict_zhuyin ON $TABLE_NAME($COL_ZHUYIN)")
         db.execSQL("CREATE INDEX idx_user_dict_word ON $TABLE_NAME($COL_WORD)")
+        createLearningTable(db)
     }
 
     override fun onUpgrade(db: SQLiteDatabase, oldVersion: Int, newVersion: Int) {
         if (oldVersion < 2) {
             db.execSQL("CREATE INDEX IF NOT EXISTS idx_user_dict_zhuyin ON $TABLE_NAME($COL_ZHUYIN)")
             db.execSQL("CREATE INDEX IF NOT EXISTS idx_user_dict_word ON $TABLE_NAME($COL_WORD)")
+            createLearningTable(db)
         }
+    }
+
+    private fun createLearningTable(db: SQLiteDatabase) {
+        db.execSQL(
+            """
+            CREATE TABLE IF NOT EXISTS $LEARNING_TABLE_NAME (
+                $COL_READING TEXT NOT NULL,
+                $COL_WORD TEXT NOT NULL,
+                $COL_COUNT INTEGER NOT NULL DEFAULT 0,
+                $COL_UPDATED_AT INTEGER NOT NULL,
+                PRIMARY KEY($COL_READING, $COL_WORD)
+            )
+            """.trimIndent()
+        )
+        db.execSQL(
+            "CREATE INDEX IF NOT EXISTS idx_candidate_learning_updated " +
+                "ON $LEARNING_TABLE_NAME($COL_UPDATED_AT DESC)"
+        )
     }
 
     fun addEntry(zhuyin: String, word: String): Long {
@@ -110,7 +143,121 @@ class UserDictionaryStore(context: Context) :
         return merged
     }
 
-    fun exportToJson(): String {
+    fun recordSelection(reading: String, word: String, increment: Int = 1) {
+        val cleanReading = reading.trim()
+        val cleanWord = word.trim()
+        if (cleanReading.isEmpty() || cleanWord.isEmpty() || increment <= 0) return
+
+        val now = System.currentTimeMillis()
+        val db = writableDatabase
+        db.beginTransaction()
+        try {
+            val initialValues = ContentValues().apply {
+                put(COL_READING, cleanReading)
+                put(COL_WORD, cleanWord)
+                put(COL_COUNT, 0)
+                put(COL_UPDATED_AT, now)
+            }
+            db.insertWithOnConflict(
+                LEARNING_TABLE_NAME,
+                null,
+                initialValues,
+                SQLiteDatabase.CONFLICT_IGNORE
+            )
+            db.execSQL(
+                "UPDATE $LEARNING_TABLE_NAME " +
+                    "SET $COL_COUNT = MIN($COL_COUNT + ?, $MAX_LEARNING_COUNT), " +
+                    "$COL_UPDATED_AT = ? " +
+                    "WHERE $COL_READING = ? AND $COL_WORD = ?",
+                arrayOf(increment, now, cleanReading, cleanWord)
+            )
+            db.setTransactionSuccessful()
+        } finally {
+            db.endTransaction()
+        }
+    }
+
+    fun getLearning(): List<CandidateLearningEntry> {
+        val result = mutableListOf<CandidateLearningEntry>()
+        readableDatabase.query(
+            LEARNING_TABLE_NAME,
+            arrayOf(COL_READING, COL_WORD, COL_COUNT, COL_UPDATED_AT),
+            null,
+            null,
+            null,
+            null,
+            "$COL_UPDATED_AT DESC"
+        ).use { cursor ->
+            val readingIndex = cursor.getColumnIndexOrThrow(COL_READING)
+            val wordIndex = cursor.getColumnIndexOrThrow(COL_WORD)
+            val countIndex = cursor.getColumnIndexOrThrow(COL_COUNT)
+            val updatedIndex = cursor.getColumnIndexOrThrow(COL_UPDATED_AT)
+            while (cursor.moveToNext()) {
+                result.add(
+                    CandidateLearningEntry(
+                        reading = cursor.getString(readingIndex),
+                        word = cursor.getString(wordIndex),
+                        count = cursor.getInt(countIndex),
+                        updatedAt = cursor.getLong(updatedIndex)
+                    )
+                )
+            }
+        }
+        return result
+    }
+
+    fun getLearningCounts(readings: List<String>): Map<String, Int> {
+        val selectedReadings = (readings.filter { it.isNotBlank() } + LEGACY_GLOBAL_READING)
+            .distinct()
+        if (selectedReadings.isEmpty()) return emptyMap()
+
+        val placeholders = selectedReadings.joinToString(",") { "?" }
+        val result = mutableMapOf<String, Int>()
+        readableDatabase.query(
+            LEARNING_TABLE_NAME,
+            arrayOf(COL_WORD, COL_COUNT),
+            "$COL_READING IN ($placeholders)",
+            selectedReadings.toTypedArray(),
+            null,
+            null,
+            null
+        ).use { cursor ->
+            val wordIndex = cursor.getColumnIndexOrThrow(COL_WORD)
+            val countIndex = cursor.getColumnIndexOrThrow(COL_COUNT)
+            while (cursor.moveToNext()) {
+                val word = cursor.getString(wordIndex)
+                val combined = (result[word]?.toLong() ?: 0L) + cursor.getInt(countIndex)
+                result[word] = combined.coerceAtMost(Int.MAX_VALUE.toLong()).toInt()
+            }
+        }
+        return result
+    }
+
+    fun learningEntryCount(): Int =
+        DatabaseUtils.queryNumEntries(readableDatabase, LEARNING_TABLE_NAME)
+            .coerceAtMost(Int.MAX_VALUE.toLong())
+            .toInt()
+
+    fun mergeLegacyLearning(counts: Map<String, Int>) {
+        if (counts.isEmpty()) return
+        val now = System.currentTimeMillis()
+        val db = writableDatabase
+        db.beginTransaction()
+        try {
+            counts.forEach { (word, count) ->
+                if (word.isNotBlank() && count > 0) {
+                    mergeLearningEntry(db, LEGACY_GLOBAL_READING, word, count, now)
+                }
+            }
+            db.setTransactionSuccessful()
+        } finally {
+            db.endTransaction()
+        }
+    }
+
+    fun clearLearning(): Int = writableDatabase.delete(LEARNING_TABLE_NAME, null, null)
+
+    fun exportToJson(includeLearning: Boolean = false): String {
         val array = JSONArray()
         search("").forEach { entry ->
             array.put(
@@ -121,27 +268,43 @@ class UserDictionaryStore(context: Context) :
                     .put("updatedAt", entry.updatedAt)
             )
         }
-        return JSONObject()
-            .put("version", 1)
+        val root = JSONObject()
+            .put("version", 2)
             .put("entries", array)
-            .toString(2)
+        if (includeLearning) {
+            val learning = JSONArray()
+            getLearning().forEach { entry ->
+                learning.put(
+                    JSONObject()
+                        .put("reading", entry.reading)
+                        .put("word", entry.word)
+                        .put("count", entry.count)
+                )
+            }
+            root.put("learning", learning)
+        }
+        return root.toString(2)
     }
 
-    fun exportToUri(resolver: ContentResolver, uri: Uri) {
+    fun exportToUri(
+        resolver: ContentResolver,
+        uri: Uri,
+        includeLearning: Boolean = false
+    ) {
         resolver.openOutputStream(uri)?.bufferedWriter(Charsets.UTF_8)?.use { writer ->
-            writer.write(exportToJson())
+            writer.write(exportToJson(includeLearning))
         } ?: error("無法寫入匯出檔案")
     }
 
-    fun importFromUri(resolver: ContentResolver, uri: Uri): Int {
+    fun importFromUri(resolver: ContentResolver, uri: Uri): DictionaryImportResult {
         val text = resolver.openInputStream(uri)?.bufferedReader(Charsets.UTF_8)?.use { it.readText() }
             ?: error("無法讀取匯入檔案")
         return importFromText(text)
     }
 
-    fun importFromText(text: String): Int {
+    fun importFromText(text: String): DictionaryImportResult {
         val trimmed = text.trim()
-        if (trimmed.isEmpty()) return 0
+        if (trimmed.isEmpty()) return DictionaryImportResult(entries = 0, learning = 0)
         return if (trimmed.startsWith("{") || trimmed.startsWith("[")) {
             importJson(trimmed)
         } else {
@@ -149,14 +312,13 @@ class UserDictionaryStore(context: Context) :
         }
     }
 
-    private fun importJson(text: String): Int {
-        val entries = if (text.startsWith("[")) {
-            JSONArray(text)
-        } else {
-            JSONObject(text).optJSONArray("entries") ?: JSONArray()
-        }
+    private fun importJson(text: String): DictionaryImportResult {
+        val root = if (text.startsWith("[")) null else JSONObject(text)
+        val entries = if (root == null) JSONArray(text) else root.optJSONArray("entries") ?: JSONArray()
+        val learning = root?.optJSONArray("learning") ?: JSONArray()
 
-        var count = 0
+        var entryCount = 0
+        var learningCount = 0
         writableDatabase.beginTransaction()
         try {
             for (i in 0 until entries.length()) {
@@ -164,17 +326,86 @@ class UserDictionaryStore(context: Context) :
                 val zhuyin = obj.optString("zhuyin").trim()
                 val word = obj.optString("word").trim()
                 if (zhuyin.isEmpty() || word.isEmpty()) continue
-                addEntry(zhuyin, word)
-                count++
+                val createdAt = obj.optLong("createdAt", System.currentTimeMillis())
+                val updatedAt = obj.optLong("updatedAt", createdAt)
+                insertImportedEntry(zhuyin, word, createdAt, updatedAt)
+                entryCount++
+            }
+            for (i in 0 until learning.length()) {
+                val obj = learning.optJSONObject(i) ?: continue
+                val reading = obj.optString("reading").trim()
+                val word = obj.optString("word").trim()
+                val selectionCount = obj.optInt("count", 0)
+                val updatedAt = obj.optLong("updatedAt", System.currentTimeMillis())
+                if (reading.isEmpty() || word.isEmpty() || selectionCount <= 0) continue
+                mergeImportedLearning(reading, word, selectionCount, updatedAt)
+                learningCount++
             }
             writableDatabase.setTransactionSuccessful()
         } finally {
             writableDatabase.endTransaction()
         }
-        return count
+        return DictionaryImportResult(entries = entryCount, learning = learningCount)
     }
 
-    private fun importTsv(text: String): Int {
+    private fun insertImportedEntry(
+        zhuyin: String,
+        word: String,
+        createdAt: Long,
+        updatedAt: Long
+    ) {
+        val values = ContentValues().apply {
+            put(COL_ZHUYIN, zhuyin)
+            put(COL_WORD, word)
+            put(COL_CREATED_AT, createdAt)
+            put(COL_UPDATED_AT, updatedAt)
+        }
+        writableDatabase.insertWithOnConflict(
+            TABLE_NAME,
+            null,
+            values,
+            SQLiteDatabase.CONFLICT_REPLACE
+        )
+    }
+
+    private fun mergeImportedLearning(
+        reading: String,
+        word: String,
+        count: Int,
+        updatedAt: Long
+    ) {
+        mergeLearningEntry(writableDatabase, reading, word, count, updatedAt)
+    }
+
+    private fun mergeLearningEntry(
+        db: SQLiteDatabase,
+        reading: String,
+        word: String,
+        count: Int,
+        updatedAt: Long
+    ) {
+        val initialValues = ContentValues().apply {
+            put(COL_READING, reading)
+            put(COL_WORD, word)
+            put(COL_COUNT, count)
+            put(COL_UPDATED_AT, updatedAt)
+        }
+        db.insertWithOnConflict(
+            LEARNING_TABLE_NAME,
+            null,
+            initialValues,
+            SQLiteDatabase.CONFLICT_IGNORE
+        )
+        db.execSQL(
+            "UPDATE $LEARNING_TABLE_NAME " +
+                "SET $COL_COUNT = MAX($COL_COUNT, ?), " +
+                "$COL_UPDATED_AT = MAX($COL_UPDATED_AT, ?) " +
+                "WHERE $COL_READING = ? AND $COL_WORD = ?",
+            arrayOf(count, updatedAt, reading, word)
+        )
+    }
+
+    private fun importTsv(text: String): DictionaryImportResult {
         var count = 0
         writableDatabase.beginTransaction()
         try {
@@ -190,7 +421,7 @@ class UserDictionaryStore(context: Context) :
         } finally {
             writableDatabase.endTransaction()
         }
-        return count
+        return DictionaryImportResult(entries = count, learning = 0)
     }
 
     private fun readEntries(
@@ -230,12 +461,17 @@ class UserDictionaryStore(context: Context) :
 
     companion object {
         private const val DB_NAME = "user_dictionary.db"
-        private const val DB_VERSION = 1
+        private const val DB_VERSION = 2
         private const val TABLE_NAME = "user_dictionary"
+        private const val LEARNING_TABLE_NAME = "candidate_learning"
         private const val COL_ID = "_id"
         private const val COL_ZHUYIN = "zhuyin"
+        private const val COL_READING = "reading"
         private const val COL_WORD = "word"
+        private const val COL_COUNT = "selection_count"
         private const val COL_CREATED_AT = "created_at"
         private const val COL_UPDATED_AT = "updated_at"
+        private const val LEGACY_GLOBAL_READING = "*"
+        private const val MAX_LEARNING_COUNT = Int.MAX_VALUE
     }
 }
