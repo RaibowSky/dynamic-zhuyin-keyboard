@@ -119,6 +119,14 @@ internal object CandidatePanelBehavior {
     }
 }
 
+internal object CompositionEditing {
+    fun remainingAfterSelection(raw: String, start: Int, end: Int): String {
+        val safeStart = start.coerceIn(0, raw.length)
+        val safeEnd = end.coerceIn(safeStart, raw.length)
+        return raw.removeRange(safeStart, safeEnd)
+    }
+}
+
 internal object PressedKeyRemapping {
     fun remapIndex(
         previousLabels: List<String>,

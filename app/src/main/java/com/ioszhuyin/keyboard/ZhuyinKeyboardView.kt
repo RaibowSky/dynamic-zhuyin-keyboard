@@ -110,9 +110,6 @@ class ZhuyinKeyboardView @JvmOverloads constructor(
     // 公開狀態
     // ============================================================
 
-    /** 當前已拼字串 */
-    var composingText: StringBuilder = StringBuilder()
-
     /** 候選字 (從字典 + 頻率學習) */
     private var candidates: List<String> = emptyList()
     private var candidatePageStart: Int = 0
@@ -175,7 +172,6 @@ class ZhuyinKeyboardView @JvmOverloads constructor(
     private val paintKeyBgDisabled = Paint(Paint.ANTI_ALIAS_FLAG)
     private val paintKeyStroke = Paint(Paint.ANTI_ALIAS_FLAG)
     private val paintControlText = Paint(Paint.ANTI_ALIAS_FLAG or Paint.SUBPIXEL_TEXT_FLAG)
-    private val paintComposition = Paint(Paint.ANTI_ALIAS_FLAG or Paint.SUBPIXEL_TEXT_FLAG)
     private val paintCandidateText = Paint(Paint.ANTI_ALIAS_FLAG or Paint.SUBPIXEL_TEXT_FLAG)
     private val paintCandidateBg = Paint(Paint.ANTI_ALIAS_FLAG)
     private val paintBar = Paint(Paint.ANTI_ALIAS_FLAG)
@@ -184,7 +180,6 @@ class ZhuyinKeyboardView @JvmOverloads constructor(
     private val paintToneText = Paint(Paint.ANTI_ALIAS_FLAG or Paint.SUBPIXEL_TEXT_FLAG)
 
     private val cornerRadius: Float get() = dp(metrics.cornerRadius)
-    private val compositionBarHeight: Float get() = dp(metrics.compositionBarHeight)
     private val candidateBarHeight: Float get() = dp(metrics.candidateBarHeight)
     private val keyH: Float get() = dp(metrics.keyHeight)
     private val controlH: Float get() = dp(metrics.controlHeight)
@@ -215,8 +210,6 @@ class ZhuyinKeyboardView @JvmOverloads constructor(
         paintKeyStroke.color = colorKeyStroke
         paintKeyStroke.style = Paint.Style.STROKE
         paintKeyStroke.strokeWidth = dp(metrics.keyStrokeWidth)
-        paintComposition.color = Color.BLACK
-        paintComposition.textAlign = Paint.Align.LEFT
         paintCandidateText.color = colorKeyText
         paintCandidateText.textAlign = Paint.Align.CENTER
         paintCandidateBg.color = Color.WHITE
@@ -283,7 +276,6 @@ class ZhuyinKeyboardView @JvmOverloads constructor(
 
     private val zhuyinKeys = mutableListOf<ZhuyinKey>()
     private val controlKeys = mutableListOf<ControlKey>()
-    private var compositionBarRect: RectF = RectF()
     private var candidateBarRect: RectF = RectF()
     private var candidateToggleRect: RectF = RectF()
     private data class CandidateCell(val candidateIndex: Int, val rect: RectF)
@@ -300,7 +292,6 @@ class ZhuyinKeyboardView @JvmOverloads constructor(
     private var systemBottomInset = 0f
 
     val keyboardContentTop: Float get() {
-        if (compositionBarRect.height() > 0f) return compositionBarRect.top
         if (candidateBarRect.height() > 0f) return candidateBarRect.top
         return zhuyinKeys.firstOrNull()?.rect?.top ?: 0f
     }
@@ -349,21 +340,13 @@ class ZhuyinKeyboardView @JvmOverloads constructor(
         val keySpacing = dp(metrics.horizontalGap)
         val controlSpacing = dp(metrics.horizontalGap)
 
-        val showComposition = composingText.isNotEmpty()
-        val compositionH = if (showComposition) compositionBarHeight + rowSpacing else 0f
         val candidateH = if (candidates.isNotEmpty()) candidateBarHeight + rowSpacing else 0f
 
         val keyboardTotalH = keyH * 3 + rowSpacing * 2 + controlH + controlSpacing
-        val contentH = padTopMetric + compositionH + candidateH + keyboardTotalH + padBottomMetric
+        val contentH = padTopMetric + candidateH + keyboardTotalH + padBottomMetric
         val padTop = (height - contentH).coerceAtLeast(0f) + padTopMetric
 
         var y = padTop
-        if (showComposition) {
-            compositionBarRect = RectF(padX, y, width - padX, y + compositionBarHeight)
-            y += compositionBarHeight + rowSpacing
-        } else {
-            compositionBarRect = RectF()
-        }
         if (candidates.isNotEmpty()) {
             val candidateBottom = if (candidateExpanded) {
                 (height - padBottomMetric).coerceAtLeast(y + candidateBarHeight)
@@ -500,7 +483,6 @@ class ZhuyinKeyboardView @JvmOverloads constructor(
     private fun updateTextSizes() {
         paintKeyText.textSize = min(keyH * 0.70f, dp(metrics.keyFontSize))
         paintControlText.textSize = min(controlH * 0.50f, dp(metrics.controlFontSize))
-        paintComposition.textSize = dp(metrics.compositionFontSize)
         paintCandidateText.textSize = dp(metrics.candidateFontSize)
         paintToneText.textSize = min(keyH * 0.55f, dp(metrics.toneFontSize))
         paintKeyHint.textSize = dp(metrics.hintFontSize)
@@ -640,14 +622,12 @@ class ZhuyinKeyboardView @JvmOverloads constructor(
 
         // 設定字型
         paintKeyText.typeface = bopomofoTypeface
-        paintComposition.typeface = bopomofoTypeface
         paintControlText.typeface = Typeface.DEFAULT
         paintCandidateText.typeface = Typeface.DEFAULT
         paintToneText.typeface = bopomofoTypeface
 
         // 背景
         val bgTop = when {
-            compositionBarRect.height() > 0 -> compositionBarRect.top
             candidateBarRect.height() > 0 -> candidateBarRect.top
             zhuyinKeys.isNotEmpty() -> zhuyinKeys.first().rect.top
             else -> 0f
@@ -664,15 +644,6 @@ class ZhuyinKeyboardView @JvmOverloads constructor(
                 paintRoundRect.color = Color.parseColor("#C8CCD0")
                 canvas.drawRect(0f, bgTop, width.toFloat(), bgTop + 1f, paintRoundRect)
             }
-        }
-
-        // Compose bar
-        if (compositionBarRect.height() > 0) {
-            drawRoundRect(canvas, compositionBarRect, Color.WHITE, cornerRadius)
-            val text = composingText.toString()
-            val cx = compositionBarRect.left + dp(metrics.compositionTextLeftPadding)
-            val cy = compositionBarRect.centerY() - (paintComposition.ascent() + paintComposition.descent()) / 2
-            canvas.drawText(text, cx, cy, paintComposition)
         }
 
         // Candidate bar
@@ -908,7 +879,6 @@ class ZhuyinKeyboardView @JvmOverloads constructor(
         data class Candidate(val idx: Int) : TouchTarget()
         object MorePage : TouchTarget()
         object CandidatePanel : TouchTarget()
-        object Composition : TouchTarget()
         data class ZhuyinKey(val idx: Int) : TouchTarget()
         data class ControlKey(val idx: Int) : TouchTarget()
         data class ToneKey(val idx: Int) : TouchTarget()
@@ -1024,9 +994,6 @@ class ZhuyinKeyboardView @JvmOverloads constructor(
     }
 
     private fun findTarget(x: Float, y: Float): TouchTarget? {
-        if (compositionBarRect.height() > 0 && compositionBarRect.contains(x, y)) {
-            return TouchTarget.Composition
-        }
         if (candidateBarRect.height() > 0 && candidateBarRect.contains(x, y)) {
             if (candidateToggleRect.contains(x, y)) {
                 return TouchTarget.MorePage
@@ -1054,7 +1021,6 @@ class ZhuyinKeyboardView @JvmOverloads constructor(
             }
             is TouchTarget.MorePage -> onCandidateExpansionToggle?.invoke()
             is TouchTarget.CandidatePanel -> {}
-            is TouchTarget.Composition -> {}  // 點 compose bar 不做事
             is TouchTarget.ControlKey -> {
                 when (controlKeys[t.idx].action) {
                     ControlAction.SPACE -> onSpace?.invoke()

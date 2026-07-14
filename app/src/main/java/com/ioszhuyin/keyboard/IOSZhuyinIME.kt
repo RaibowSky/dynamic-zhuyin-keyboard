@@ -129,7 +129,6 @@ class IOSZhuyinIME : InputMethodService() {
     override fun onCreateInputView(): View {
         val view = ZhuyinKeyboardView(this)
         view.bopomofoTypeface = bopomofoTypeface ?: Typeface.create("sans-serif", Typeface.NORMAL)
-        view.composingText = composingText
 
         view.onKeyPress = { key -> onZhuyinKeyPressed(key) }
         view.onBackspace = { handleBackspaceDown() }
@@ -188,7 +187,10 @@ class IOSZhuyinIME : InputMethodService() {
         composingText.insert(if (last.hasTone) last.end - 1 else last.end, tone)
     }
 
-    private fun refreshCandidates(resetSelection: Boolean) {
+    private fun refreshCandidates(
+        resetSelection: Boolean,
+        clearEmptyEditorComposition: Boolean = false
+    ) {
         if (resetSelection) candidatesExpanded = false
         val raw = composingText.toString()
         if (raw.isEmpty()) {
@@ -198,6 +200,7 @@ class IOSZhuyinIME : InputMethodService() {
             candidatesExpanded = false
             activeSegmentStart = 0
             activeSegmentEnd = 0
+            syncEditorComposing(clearEmptyComposition = clearEmptyEditorComposition)
             syncKeyboardView()
             return
         }
@@ -218,7 +221,18 @@ class IOSZhuyinIME : InputMethodService() {
         }
         val pageSize = ImeBehavior.candidatePageSize(allCandidates)
         candidatePage = if (selectedCandidateIndex >= 0) selectedCandidateIndex / pageSize else 0
+        syncEditorComposing()
         syncKeyboardView()
+    }
+
+    private fun syncEditorComposing(clearEmptyComposition: Boolean = false) {
+        val ic = currentInputConnection ?: return
+        if (composingText.isEmpty()) {
+            if (clearEmptyComposition) ic.setComposingText("", 1)
+            ic.finishComposingText()
+        } else {
+            ic.setComposingText(composingText.toString(), 1)
+        }
     }
 
     private fun syncKeyboardView() {
@@ -276,7 +290,13 @@ class IOSZhuyinIME : InputMethodService() {
         ic.commitText(candidate, 1)
         wordSelected(reading, candidate)
 
-        composingText.delete(start, end)
+        val remaining = CompositionEditing.remainingAfterSelection(
+            composingText.toString(),
+            start,
+            end
+        )
+        composingText.clear()
+        composingText.append(remaining)
         recomputePageFromComposing()
         refreshCandidates(resetSelection = true)
         vibrateLight()
@@ -311,7 +331,10 @@ class IOSZhuyinIME : InputMethodService() {
         if (composingText.isNotEmpty()) {
             composingText.deleteCharAt(composingText.length - 1)
             recomputePageFromComposing()
-            refreshCandidates(resetSelection = true)
+            refreshCandidates(
+                resetSelection = true,
+                clearEmptyEditorComposition = composingText.isEmpty()
+            )
         } else {
             currentInputConnection?.let { ic ->
                 val beforeCursor = ic.getTextBeforeCursor(MAX_BACKSPACE_CONTEXT, 0)
@@ -428,7 +451,11 @@ class IOSZhuyinIME : InputMethodService() {
         imm.showInputMethodPicker()
     }
 
-    private fun resetToInitial() {
+    private fun resetToInitial(clearEditorComposition: Boolean = false) {
+        if (clearEditorComposition && composingText.isNotEmpty()) {
+            currentInputConnection?.setComposingText("", 1)
+            currentInputConnection?.finishComposingText()
+        }
         composingText.clear()
         allCandidates = emptyList()
         selectedCandidateIndex = -1
@@ -473,13 +500,13 @@ class IOSZhuyinIME : InputMethodService() {
         stopBackspaceRepeat()
         super.onStartInputView(info, restarting)
         keyboardView?.setReturnKeyLabel(editorReturnKeyLabel)
-        resetToInitial()
+        resetToInitial(clearEditorComposition = true)
         applyEditorKeyboardMode()
     }
 
     override fun onFinishInputView(finishingInput: Boolean) {
         stopBackspaceRepeat()
-        resetToInitial()
+        resetToInitial(clearEditorComposition = true)
         super.onFinishInputView(finishingInput)
     }
 

@@ -197,6 +197,18 @@ class ImeBehaviorTest {
     }
 
     @Test
+    fun candidateSelectionKeepsUnconvertedZhuyinSuffix() {
+        val raw = "ㄓㄨㄥˉㄏㄨㄚˊㄖㄣˊ"
+        val convertedEnd = "ㄓㄨㄥˉㄏㄨㄚˊ".length
+
+        assertEquals(
+            "ㄖㄣˊ",
+            CompositionEditing.remainingAfterSelection(raw, start = 0, end = convertedEnd)
+        )
+        assertEquals("", CompositionEditing.remainingAfterSelection(raw, 0, raw.length))
+    }
+
+    @Test
     fun unicodeBackspaceDeletesWholeUserPerceivedCharacter() {
         assertEquals(1, UnicodeBackspace.codeUnitsToDelete("注"))
         assertEquals(2, UnicodeBackspace.codeUnitsToDelete("A😀"))
