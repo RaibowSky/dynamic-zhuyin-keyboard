@@ -120,6 +120,25 @@ class ImeBehaviorTest {
     }
 
     @Test
+    fun returnKeyLabelMatchesEditorActionAndCustomLabel() {
+        assertEquals("換行", ImeBehavior.returnKeyLabel(null, EditorInfo.IME_ACTION_NONE))
+        assertEquals("前往", ImeBehavior.returnKeyLabel(null, EditorInfo.IME_ACTION_GO))
+        assertEquals("搜尋", ImeBehavior.returnKeyLabel(null, EditorInfo.IME_ACTION_SEARCH))
+        assertEquals("傳送", ImeBehavior.returnKeyLabel(null, EditorInfo.IME_ACTION_SEND))
+        assertEquals("下一步", ImeBehavior.returnKeyLabel(null, EditorInfo.IME_ACTION_NEXT))
+        assertEquals("完成", ImeBehavior.returnKeyLabel(null, EditorInfo.IME_ACTION_DONE))
+        assertEquals("上一個", ImeBehavior.returnKeyLabel(null, EditorInfo.IME_ACTION_PREVIOUS))
+        assertEquals("登入", ImeBehavior.returnKeyLabel("登入", EditorInfo.IME_ACTION_GO))
+        assertEquals(
+            "換行",
+            ImeBehavior.returnKeyLabel(
+                "登入",
+                EditorInfo.IME_ACTION_GO or EditorInfo.IME_FLAG_NO_ENTER_ACTION
+            )
+        )
+    }
+
+    @Test
     fun passwordEditorsSelectAndLockToNonZhuyinModes() {
         val normalText = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_NORMAL
         val password = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_PASSWORD
@@ -152,6 +171,10 @@ class ImeBehaviorTest {
         assertEquals(
             listOf("123", "☺", "空白", "換行"),
             ImeBehavior.zhuyinControlLabels(showFinalPage = false)
+        )
+        assertEquals(
+            listOf("123", "☺", "空白", "搜尋"),
+            ImeBehavior.zhuyinControlLabels(showFinalPage = false, returnLabel = "搜尋")
         )
         assertEquals(
             listOf("123", "☺", "一聲", "選定"),

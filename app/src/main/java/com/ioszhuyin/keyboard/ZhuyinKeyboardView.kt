@@ -62,6 +62,7 @@ class ZhuyinKeyboardView @JvmOverloads constructor(
     private var mode: Mode = Mode.ZHUYIN
     private var zhuyinModeAllowed: Boolean = true
     private var englishShifted: Boolean = false
+    private var returnKeyLabel: String = "換行"
     fun setMode(m: Mode) {
         mode = if (m == Mode.ZHUYIN && !zhuyinModeAllowed) Mode.ENGLISH else m
         if (mode != Mode.ZHUYIN) showFinalPage = false
@@ -69,6 +70,12 @@ class ZhuyinKeyboardView @JvmOverloads constructor(
         refresh()
     }
     fun getMode(): Mode = mode
+
+    fun setReturnKeyLabel(label: String) {
+        if (returnKeyLabel == label) return
+        returnKeyLabel = label
+        refresh()
+    }
 
     fun setZhuyinModeAllowed(allowed: Boolean) {
         if (zhuyinModeAllowed == allowed) return
@@ -431,36 +438,39 @@ class ZhuyinKeyboardView @JvmOverloads constructor(
             mode == Mode.ZHUYIN -> Pair(
                 listOf(ControlAction.NUMBER, ControlAction.EMOJI,
                     ControlAction.SPACE, ControlAction.RETURN),
-                ImeBehavior.zhuyinControlLabels(showFinalPage = false)
+                ImeBehavior.zhuyinControlLabels(
+                    showFinalPage = false,
+                    returnLabel = returnKeyLabel
+                )
             )
             mode == Mode.ENGLISH -> Pair(
                 listOf(ControlAction.NUMBER, ControlAction.EMOJI,
                     ControlAction.SPACE, ControlAction.RETURN),
-                listOf("123", "☺", "space", "return")
+                listOf("123", "☺", "space", returnKeyLabel)
             )
             mode == Mode.NUMBER && !zhuyinModeAllowed -> Pair(
                 listOf(ControlAction.ENGLISH, ControlAction.SYMBOL, ControlAction.EMOJI,
                     ControlAction.SPACE, ControlAction.RETURN, ControlAction.BACKSPACE),
-                listOf("ABC", "#+=", "☺", "空白", "換行", "⌫")
+                listOf("ABC", "#+=", "☺", "空白", returnKeyLabel, "⌫")
             )
             mode == Mode.NUMBER -> Pair(
                 listOf(ControlAction.TOGGLE_FINALS, ControlAction.SYMBOL, ControlAction.EMOJI,
                     ControlAction.SPACE, ControlAction.RETURN, ControlAction.BACKSPACE),
-                listOf("注", "#+=", "☺", "空白", "換行", "⌫")
+                listOf("注", "#+=", "☺", "空白", returnKeyLabel, "⌫")
             )
             mode == Mode.SYMBOL && !zhuyinModeAllowed -> Pair(
                 listOf(ControlAction.ENGLISH, ControlAction.NUMBER, ControlAction.EMOJI,
                     ControlAction.SPACE, ControlAction.RETURN, ControlAction.BACKSPACE),
-                listOf("ABC", "123", "☺", "空白", "換行", "⌫")
+                listOf("ABC", "123", "☺", "空白", returnKeyLabel, "⌫")
             )
             mode == Mode.SYMBOL -> Pair(
                 listOf(ControlAction.TOGGLE_FINALS, ControlAction.NUMBER, ControlAction.EMOJI,
                     ControlAction.SPACE, ControlAction.RETURN, ControlAction.BACKSPACE),
-                listOf("注", "123", "☺", "空白", "換行", "⌫")
+                listOf("注", "123", "☺", "空白", returnKeyLabel, "⌫")
             )
             else -> Pair(
                 listOf(ControlAction.SPACE, ControlAction.RETURN, ControlAction.BACKSPACE),
-                listOf("空白", "換行", "⌫")
+                listOf("空白", returnKeyLabel, "⌫")
             )
         }
         val weights = actions.map { action ->

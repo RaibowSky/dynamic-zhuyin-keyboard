@@ -31,6 +31,7 @@ class IOSZhuyinIME : InputMethodService() {
 
     private var personalizationAllowed = false
     private var editorKeyboardMode = EditorKeyboardMode.ZHUYIN
+    private var editorReturnKeyLabel = "換行"
 
     private fun wordSelected(reading: String, word: String) {
         if (!personalizationAllowed || !CandidateLearningSettings.isEnabled(this)) return
@@ -148,6 +149,7 @@ class IOSZhuyinIME : InputMethodService() {
         view.onToneSelected = { tone -> onToneSelected(tone) }
 
         keyboardView = view
+        view.setReturnKeyLabel(editorReturnKeyLabel)
         applyEditorKeyboardMode()
         syncKeyboardView()
         return view
@@ -461,11 +463,16 @@ class IOSZhuyinIME : InputMethodService() {
             imeOptions = attribute?.imeOptions
         )
         editorKeyboardMode = ImeBehavior.keyboardMode(attribute?.inputType)
+        editorReturnKeyLabel = ImeBehavior.returnKeyLabel(
+            actionLabel = attribute?.actionLabel,
+            imeOptions = attribute?.imeOptions ?: EditorInfo.IME_ACTION_NONE
+        )
     }
 
     override fun onStartInputView(info: EditorInfo?, restarting: Boolean) {
         stopBackspaceRepeat()
         super.onStartInputView(info, restarting)
+        keyboardView?.setReturnKeyLabel(editorReturnKeyLabel)
         resetToInitial()
         applyEditorKeyboardMode()
     }

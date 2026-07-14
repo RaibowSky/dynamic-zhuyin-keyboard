@@ -47,6 +47,20 @@ internal object ImeBehavior {
         }
     }
 
+    fun returnKeyLabel(actionLabel: CharSequence?, imeOptions: Int): String {
+        if ((imeOptions and EditorInfo.IME_FLAG_NO_ENTER_ACTION) != 0) return "換行"
+        actionLabel?.toString()?.takeIf { it.isNotBlank() }?.let { return it }
+        return when (imeOptions and EditorInfo.IME_MASK_ACTION) {
+            EditorInfo.IME_ACTION_GO -> "前往"
+            EditorInfo.IME_ACTION_SEARCH -> "搜尋"
+            EditorInfo.IME_ACTION_SEND -> "傳送"
+            EditorInfo.IME_ACTION_NEXT -> "下一步"
+            EditorInfo.IME_ACTION_DONE -> "完成"
+            EditorInfo.IME_ACTION_PREVIOUS -> "上一個"
+            else -> "換行"
+        }
+    }
+
     fun keyboardMode(inputType: Int?): EditorKeyboardMode {
         if (inputType == null) return EditorKeyboardMode.ZHUYIN
         val inputClass = inputType and InputType.TYPE_MASK_CLASS
@@ -78,11 +92,14 @@ internal object ImeBehavior {
         return (CANDIDATE_ROW_UNITS / longest.coerceAtLeast(1)).coerceIn(1, CANDIDATE_ROW_UNITS)
     }
 
-    fun zhuyinControlLabels(showFinalPage: Boolean): List<String> =
+    fun zhuyinControlLabels(
+        showFinalPage: Boolean,
+        returnLabel: String = "換行"
+    ): List<String> =
         if (showFinalPage) {
             listOf("123", "☺", "一聲", "選定")
         } else {
-            listOf("123", "☺", "空白", "換行")
+            listOf("123", "☺", "空白", returnLabel)
         }
 }
 
