@@ -14,6 +14,25 @@ dictionaries, trademark assets, or other copyrighted materials.
 - Stable key positions for Zhuyin and English layouts.
 - Zhuyin candidate lookup from a generated dictionary asset.
 - English, number, and symbol input modes.
+- Offline processing without network permission.
+
+## OpenAI Build Week: Codex and GPT-5.6
+
+This was an existing working project before OpenAI Build Week. During Build Week,
+Codex and GPT-5.6 are being used to meaningfully extend and stabilize it rather
+than to generate a new project from scratch.
+
+Their role includes:
+
+- reviewing the existing Android/Kotlin codebase and identifying high-impact reliability work;
+- implementing and testing improvements to Zhuyin composition and candidate behavior;
+- completing on-device user-dictionary learning controls, including pause, clear, reset, import, and export flows;
+- improving large-dictionary processing, transaction safety, and build verification;
+- documenting which features and commits were completed during Build Week.
+
+All model-generated changes are reviewed, built, and tested against the real
+application before they are accepted. Work completed before Build Week remains
+part of the project baseline and is not presented as new event work.
 
 ## Dictionary Data
 
