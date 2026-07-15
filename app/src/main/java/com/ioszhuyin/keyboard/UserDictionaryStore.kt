@@ -7,8 +7,15 @@ import android.database.DatabaseUtils
 import android.database.sqlite.SQLiteDatabase
 import android.database.sqlite.SQLiteOpenHelper
 import android.net.Uri
+import android.util.JsonWriter
 import org.json.JSONArray
 import org.json.JSONObject
+import java.io.ByteArrayOutputStream
+import java.io.StringWriter
+import java.io.Writer
+import java.nio.ByteBuffer
+import java.nio.charset.CharacterCodingException
+import java.nio.charset.CodingErrorAction
 
 data class UserDictionaryEntry(
     val id: Long,
@@ -78,10 +85,7 @@ class UserDictionaryStore(context: Context) :
     }
 
     fun addEntry(zhuyin: String, word: String): Long {
-        val cleanZhuyin = zhuyin.trim()
-        val cleanWord = word.trim()
-        require(cleanZhuyin.isNotEmpty()) { "請輸入注音" }
-        require(cleanWord.isNotEmpty()) { "請輸入詞彙" }
+        val (cleanZhuyin, cleanWord) = validatedEntry(zhuyin, word)
 
         val now = System.currentTimeMillis()
         val values = ContentValues().apply {
@@ -99,10 +103,7 @@ class UserDictionaryStore(context: Context) :
     }
 
     fun updateEntry(id: Long, zhuyin: String, word: String): Boolean {
-        val cleanZhuyin = zhuyin.trim()
-        val cleanWord = word.trim()
-        require(cleanZhuyin.isNotEmpty()) { "請輸入注音" }
-        require(cleanWord.isNotEmpty()) { "請輸入詞彙" }
+        val (cleanZhuyin, cleanWord) = validatedEntry(zhuyin, word)
 
         val values = ContentValues().apply {
             put(COL_ZHUYIN, cleanZhuyin)
@@ -112,10 +113,20 @@ class UserDictionaryStore(context: Context) :
         return writableDatabase.update(TABLE_NAME, values, "$COL_ID = ?", arrayOf(id.toString())) > 0
     }
 
-    fun deleteEntry(id: Long): Boolean =
-        writableDatabase.delete(TABLE_NAME, "$COL_ID = ?", arrayOf(id.toString())) > 0
+    fun deleteEntry(entry: UserDictionaryEntry): Boolean =
+        writableDatabase.delete(
+            TABLE_NAME,
+            "$COL_ID = ? AND $COL_ZHUYIN = ? AND $COL_WORD = ? AND $COL_UPDATED_AT = ?",
+            arrayOf(
+                entry.id.toString(),
+                entry.zhuyin,
+                entry.word,
+                entry.updatedAt.toString()
+            )
+        ) > 0
 
-    fun search(query: String): List<UserDictionaryEntry> {
+    fun search(query: String, limit: Int = DEFAULT_SEARCH_LIMIT): List<UserDictionaryEntry> {
+        require(limit > 0) { "顯示筆數必須大於 0" }
         val cleanQuery = query.trim()
         val selection: String?
         val args: Array<String>?
@@ -126,7 +137,28 @@ class UserDictionaryStore(context: Context) :
             selection = "$COL_ZHUYIN LIKE ? OR $COL_WORD LIKE ?"
             args = arrayOf("%$cleanQuery%", "%$cleanQuery%")
         }
-        return readEntries(selection, args, "$COL_UPDATED_AT DESC, $COL_ID DESC")
+        return readEntries(
+            selection,
+            args,
+            "$COL_UPDATED_AT DESC, $COL_ID DESC",
+            limit.toString()
+        )
+    }
+
+    fun entryCount(query: String): Int {
+        val cleanQuery = query.trim()
+        val count = if (cleanQuery.isEmpty()) {
+            DatabaseUtils.queryNumEntries(readableDatabase, TABLE_NAME)
+        } else {
+            readableDatabase.rawQuery(
+                "SELECT COUNT(*) FROM $TABLE_NAME " +
+                    "WHERE $COL_ZHUYIN LIKE ? OR $COL_WORD LIKE ?",
+                arrayOf("%$cleanQuery%", "%$cleanQuery%")
+            ).use { cursor ->
+                if (cursor.moveToFirst()) cursor.getLong(0) else 0L
+            }
+        }
+        return count.coerceAtMost(Int.MAX_VALUE.toLong()).toInt()
     }
 
     fun getCandidates(zhuyin: String): List<String> =
@@ -258,32 +290,9 @@ class UserDictionaryStore(context: Context) :
     fun clearLearning(): Int = writableDatabase.delete(LEARNING_TABLE_NAME, null, null)
 
     fun exportToJson(includeLearning: Boolean = false): String {
-        val array = JSONArray()
-        search("").forEach { entry ->
-            array.put(
-                JSONObject()
-                    .put("zhuyin", entry.zhuyin)
-                    .put("word", entry.word)
-                    .put("createdAt", entry.createdAt)
-                    .put("updatedAt", entry.updatedAt)
-            )
-        }
-        val root = JSONObject()
-            .put("version", 2)
-            .put("entries", array)
-        if (includeLearning) {
-            val learning = JSONArray()
-            getLearning().forEach { entry ->
-                learning.put(
-                    JSONObject()
-                        .put("reading", entry.reading)
-                        .put("word", entry.word)
-                        .put("count", entry.count)
-                )
-            }
-            root.put("learning", learning)
-        }
-        return root.toString(2)
+        val output = StringWriter()
+        writeExportJson(output, includeLearning)
+        return output.toString()
     }
 
     fun exportToUri(
@@ -291,19 +300,82 @@ class UserDictionaryStore(context: Context) :
         uri: Uri,
         includeLearning: Boolean = false
     ) {
-        resolver.openOutputStream(uri)?.bufferedWriter(Charsets.UTF_8)?.use { writer ->
-            writer.write(exportToJson(includeLearning))
+        resolver.openOutputStream(uri, "wt")?.bufferedWriter(Charsets.UTF_8)?.use { writer ->
+            writeExportJson(writer, includeLearning)
         } ?: error("無法寫入匯出檔案")
     }
 
+    private fun writeExportJson(output: Writer, includeLearning: Boolean) {
+        val writer = JsonWriter(output).apply { setIndent("  ") }
+        writer.beginObject()
+        writer.name("version").value(2)
+        writer.name("entries").beginArray()
+        readableDatabase.query(
+            TABLE_NAME,
+            arrayOf(COL_ZHUYIN, COL_WORD, COL_CREATED_AT, COL_UPDATED_AT),
+            null,
+            null,
+            null,
+            null,
+            "$COL_UPDATED_AT DESC, $COL_ID DESC"
+        ).use { cursor ->
+            val zhuyinIndex = cursor.getColumnIndexOrThrow(COL_ZHUYIN)
+            val wordIndex = cursor.getColumnIndexOrThrow(COL_WORD)
+            val createdIndex = cursor.getColumnIndexOrThrow(COL_CREATED_AT)
+            val updatedIndex = cursor.getColumnIndexOrThrow(COL_UPDATED_AT)
+            while (cursor.moveToNext()) {
+                writer.beginObject()
+                writer.name("zhuyin").value(cursor.getString(zhuyinIndex))
+                writer.name("word").value(cursor.getString(wordIndex))
+                writer.name("createdAt").value(cursor.getLong(createdIndex))
+                writer.name("updatedAt").value(cursor.getLong(updatedIndex))
+                writer.endObject()
+            }
+        }
+        writer.endArray()
+
+        if (includeLearning) {
+            writer.name("learning").beginArray()
+            readableDatabase.query(
+                LEARNING_TABLE_NAME,
+                arrayOf(COL_READING, COL_WORD, COL_COUNT),
+                null,
+                null,
+                null,
+                null,
+                "$COL_UPDATED_AT DESC"
+            ).use { cursor ->
+                val readingIndex = cursor.getColumnIndexOrThrow(COL_READING)
+                val wordIndex = cursor.getColumnIndexOrThrow(COL_WORD)
+                val countIndex = cursor.getColumnIndexOrThrow(COL_COUNT)
+                while (cursor.moveToNext()) {
+                    writer.beginObject()
+                    writer.name("reading").value(cursor.getString(readingIndex))
+                    writer.name("word").value(cursor.getString(wordIndex))
+                    writer.name("count").value(cursor.getInt(countIndex).toLong())
+                    writer.endObject()
+                }
+            }
+            writer.endArray()
+        }
+
+        writer.endObject()
+        writer.flush()
+    }
+
     fun importFromUri(resolver: ContentResolver, uri: Uri): DictionaryImportResult {
-        val text = resolver.openInputStream(uri)?.bufferedReader(Charsets.UTF_8)?.use { it.readText() }
+        val text = resolver.openInputStream(uri)?.use(::readBoundedUtf8)
             ?: error("無法讀取匯入檔案")
-        return importFromText(text)
+        return importValidatedText(text)
     }
 
     fun importFromText(text: String): DictionaryImportResult {
-        val trimmed = text.trim()
+        UserDictionaryImportPolicy.requireValidTextSize(text)
+        return importValidatedText(text)
+    }
+
+    private fun importValidatedText(text: String): DictionaryImportResult {
+        val trimmed = UserDictionaryImportPolicy.normalizeForImport(text)
         if (trimmed.isEmpty()) return DictionaryImportResult(entries = 0, learning = 0)
         return if (trimmed.startsWith("{") || trimmed.startsWith("[")) {
             importJson(trimmed)
@@ -316,6 +388,7 @@ class UserDictionaryStore(context: Context) :
         val root = if (text.startsWith("[")) null else JSONObject(text)
         val entries = if (root == null) JSONArray(text) else root.optJSONArray("entries") ?: JSONArray()
         val learning = root?.optJSONArray("learning") ?: JSONArray()
+        UserDictionaryImportPolicy.requireValidRecordCount(entries.length(), learning.length())
 
         var entryCount = 0
         var learningCount = 0
@@ -323,9 +396,10 @@ class UserDictionaryStore(context: Context) :
         try {
             for (i in 0 until entries.length()) {
                 val obj = entries.optJSONObject(i) ?: continue
-                val zhuyin = obj.optString("zhuyin").trim()
-                val word = obj.optString("word").trim()
-                if (zhuyin.isEmpty() || word.isEmpty()) continue
+                val rawZhuyin = obj.optString("zhuyin")
+                val rawWord = obj.optString("word")
+                if (rawZhuyin.isBlank() || rawWord.isBlank()) continue
+                val (zhuyin, word) = validatedEntry(rawZhuyin, rawWord)
                 val createdAt = obj.optLong("createdAt", System.currentTimeMillis())
                 val updatedAt = obj.optLong("updatedAt", createdAt)
                 insertImportedEntry(zhuyin, word, createdAt, updatedAt)
@@ -333,11 +407,12 @@ class UserDictionaryStore(context: Context) :
             }
             for (i in 0 until learning.length()) {
                 val obj = learning.optJSONObject(i) ?: continue
-                val reading = obj.optString("reading").trim()
-                val word = obj.optString("word").trim()
+                val rawReading = obj.optString("reading")
+                val rawWord = obj.optString("word")
                 val selectionCount = obj.optInt("count", 0)
                 val updatedAt = obj.optLong("updatedAt", System.currentTimeMillis())
-                if (reading.isEmpty() || word.isEmpty() || selectionCount <= 0) continue
+                if (rawReading.isBlank() || rawWord.isBlank() || selectionCount <= 0) continue
+                val (reading, word) = validatedEntry(rawReading, rawWord)
                 mergeImportedLearning(reading, word, selectionCount, updatedAt)
                 learningCount++
             }
@@ -414,6 +489,7 @@ class UserDictionaryStore(context: Context) :
                 if (cleanLine.isEmpty() || cleanLine.startsWith("#")) return@forEach
                 val parts = cleanLine.split('\t', ',', limit = 2)
                 if (parts.size < 2) return@forEach
+                UserDictionaryImportPolicy.requireValidRecordCount(count + 1, 0)
                 addEntry(parts[0], parts[1])
                 count++
             }
@@ -424,10 +500,48 @@ class UserDictionaryStore(context: Context) :
         return DictionaryImportResult(entries = count, learning = 0)
     }
 
+    private fun readBoundedUtf8(input: java.io.InputStream): String {
+        val output = ByteArrayOutputStream()
+        val buffer = ByteArray(DEFAULT_BUFFER_SIZE)
+        var total = 0
+        while (true) {
+            val read = input.read(buffer)
+            if (read < 0) break
+            if (read == 0) {
+                val singleByte = input.read()
+                if (singleByte < 0) break
+                total++
+                require(total <= UserDictionaryImportPolicy.MAX_IMPORT_BYTES) {
+                    UserDictionaryImportPolicy.FILE_TOO_LARGE_MESSAGE
+                }
+                output.write(singleByte)
+                continue
+            }
+            total += read
+            require(total <= UserDictionaryImportPolicy.MAX_IMPORT_BYTES) {
+                UserDictionaryImportPolicy.FILE_TOO_LARGE_MESSAGE
+            }
+            output.write(buffer, 0, read)
+        }
+        return try {
+            Charsets.UTF_8.newDecoder()
+                .onMalformedInput(CodingErrorAction.REPORT)
+                .onUnmappableCharacter(CodingErrorAction.REPORT)
+                .decode(ByteBuffer.wrap(output.toByteArray()))
+                .toString()
+        } catch (error: CharacterCodingException) {
+            throw IllegalArgumentException("匯入檔案不是有效的 UTF-8", error)
+        }
+    }
+
+    private fun validatedEntry(zhuyin: String, word: String): Pair<String, String> =
+        UserDictionaryImportPolicy.validatedEntry(zhuyin, word)
+
     private fun readEntries(
         selection: String?,
         selectionArgs: Array<String>?,
-        orderBy: String
+        orderBy: String,
+        limit: String? = null
     ): List<UserDictionaryEntry> {
         val result = mutableListOf<UserDictionaryEntry>()
         readableDatabase.query(
@@ -437,7 +551,8 @@ class UserDictionaryStore(context: Context) :
             selectionArgs,
             null,
             null,
-            orderBy
+            orderBy,
+            limit
         ).use { cursor ->
             val idIndex = cursor.getColumnIndexOrThrow(COL_ID)
             val zhuyinIndex = cursor.getColumnIndexOrThrow(COL_ZHUYIN)
@@ -473,5 +588,44 @@ class UserDictionaryStore(context: Context) :
         private const val COL_UPDATED_AT = "updated_at"
         private const val LEGACY_GLOBAL_READING = "*"
         private const val MAX_LEARNING_COUNT = Int.MAX_VALUE
+        private const val DEFAULT_SEARCH_LIMIT = 500
+    }
+}
+
+internal object UserDictionaryImportPolicy {
+    const val MAX_IMPORT_BYTES = 16 * 1024 * 1024
+    const val MAX_IMPORT_RECORDS = 50_000
+    const val MAX_READING_LENGTH = 256
+    const val MAX_WORD_LENGTH = 256
+    const val FILE_TOO_LARGE_MESSAGE = "匯入檔案不可超過 16 MB"
+
+    fun normalizeForImport(text: String): String =
+        text.removePrefix("\uFEFF").trim()
+
+    fun requireValidTextSize(text: String, maxBytes: Int = MAX_IMPORT_BYTES) {
+        require(maxBytes >= 0)
+        require(text.length <= maxBytes && text.toByteArray(Charsets.UTF_8).size <= maxBytes) {
+            FILE_TOO_LARGE_MESSAGE
+        }
+    }
+
+    fun requireValidRecordCount(entries: Int, learning: Int) {
+        require(entries >= 0 && learning >= 0 && entries.toLong() + learning <= MAX_IMPORT_RECORDS) {
+            "匯入內容不可超過 $MAX_IMPORT_RECORDS 筆"
+        }
+    }
+
+    fun validatedEntry(zhuyin: String, word: String): Pair<String, String> {
+        val cleanZhuyin = zhuyin.trim()
+        val cleanWord = word.trim()
+        require(cleanZhuyin.isNotEmpty()) { "請輸入注音" }
+        require(cleanWord.isNotEmpty()) { "請輸入詞彙" }
+        require(cleanZhuyin.length <= MAX_READING_LENGTH) {
+            "注音不可超過 $MAX_READING_LENGTH 個字元"
+        }
+        require(cleanWord.length <= MAX_WORD_LENGTH) {
+            "詞彙不可超過 $MAX_WORD_LENGTH 個字元"
+        }
+        return cleanZhuyin to cleanWord
     }
 }

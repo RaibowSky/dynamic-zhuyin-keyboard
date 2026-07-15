@@ -41,6 +41,10 @@ android {
             isReturnDefaultValues = false
         }
     }
+
+    androidResources {
+        noCompress += "tsv"
+    }
 }
 
 dependencies {

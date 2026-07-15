@@ -1,0 +1,18 @@
+Bundled file: bopomofo.ttf
+Family: ToneOZ Pinyin WenKai Regular
+Source project: ToneOZ Pinyin Wenkai
+Repository: https://github.com/jeffreyxuan/toneoz-font-pinyin-wenkai
+Font lineage: Fontworks Klee -> LXGW WenKai -> ToneOZ Pinyin WenKai
+Additional copyright holders retained in the font metadata:
+- Copyright 2021 LXGW (https://github.com/lxgw/LxgwWenKai)
+- Copyright 2020 The Klee Project Authors (https://github.com/fontworks-fonts/Klee)
+Pinned commit: 55facb136a7b22afd60ddf30ac0226661614d870
+Upstream file: fonts/ttf/ToneOZ-Pinyin-WenKai-Regular.ttf
+Upstream SHA-256: 153a826f06fd6d578adfd7235c72d3b5298698a319a48ff088dff43bd87c83e8
+License: SIL Open Font License 1.1
+Local license copy: bopomofo_OFL.txt
+Transformation: The font software was modified by subsetting it to Bopomofo
+U+3105-U+3129 and tone marks U+02C7, U+02C9, U+02CA, U+02CB, and U+02D9 using
+tools/build_bopomofo_font.py and fonttools 4.63.0. Retained glyph outlines were
+not modified.
+Bundled SHA-256: 7d2630c930012253c214100dae4fdccef582ed02be6bcbc313bed831ad672800

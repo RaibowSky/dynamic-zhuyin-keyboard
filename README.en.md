@@ -76,9 +76,12 @@ third-party source code, proprietary dictionaries, visual assets, or other
 copyrighted materials.
 
 The bundled dictionary entries and readings come from CC-CEDICT. Default
-candidate ordering uses McBopomofo aggregate phrase-frequency data. Both
-sources, pinned versions, transformations, and licenses are documented in
-`NOTICE.md`.
+candidate ordering uses McBopomofo aggregate phrase-frequency data. Keyboard
+Bopomofo glyphs use a pinned subset of ToneOZ Pinyin WenKai. Sources,
+transformations, and licenses are documented in `NOTICE.md`.
+The subset covers U+3105-U+3129 and all five tone marks used by the keyboard,
+including the first-tone macron U+02C9; its SHA-256 is
+`7d2630c930012253c214100dae4fdccef582ed02be6bcbc313bed831ad672800`.
 
 ## Licensing
 
@@ -86,7 +89,8 @@ No open-source license has been granted for this repository's original project
 code yet. All rights are reserved by the project owner unless a `LICENSE` file is
 added later.
 
-Third-party data retains its own license. The generated dictionary derived from
-CC-CEDICT is subject to CC BY-SA 4.0, while the McBopomofo aggregate
+Third-party material retains its own license. The generated dictionary derived
+from CC-CEDICT is subject to CC BY-SA 4.0, the McBopomofo aggregate
 phrase-frequency data used for candidate ordering is subject to the MIT
-License. See `NOTICE.md` for complete attribution.
+License, and the ToneOZ font subset is subject to SIL Open Font License 1.1.
+See `NOTICE.md` for complete attribution.

@@ -69,6 +69,56 @@ class ZhuyinCompositionTest {
     }
 
     @Test
+    fun manualPhrasePrefixLeavesCompletedAndIncompleteSuffix() {
+        val raw = "ㄋㄧˇㄐㄧㄚˉㄖㄣˊㄅ"
+        val segments = ZhuyinComposition.splitSegments(raw) { value ->
+            value in setOf("ㄋㄧ", "ㄐㄧㄚ", "ㄖㄣ")
+        }
+
+        val match = ZhuyinComposition.resolveLeadingCandidates(raw, segments) { reading ->
+            when (reading) {
+                "ㄋㄧˇㄐㄧㄚˉ" -> listOf("你家")
+                else -> emptyList()
+            }
+        }
+
+        assertNotNull(match)
+        assertEquals("ㄋㄧˇㄐㄧㄚˉ", match?.reading)
+        assertEquals(listOf("你家"), match?.candidates)
+        assertEquals("ㄖㄣˊㄅ", raw.substring(match?.end ?: 0))
+    }
+
+    @Test
+    fun manualPhrasePrefixOutranksCompletedSyllableFallback() {
+        val raw = "ㄋㄧˇㄐㄧㄚˉㄖㄣˊ"
+        val segments = ZhuyinComposition.splitSegments(raw) { value ->
+            value in setOf("ㄋㄧ", "ㄐㄧㄚ", "ㄖㄣ")
+        }
+
+        val match = ZhuyinComposition.resolveLeadingCandidates(
+            raw = raw,
+            segments = segments,
+            preferredPrefixCandidatesForReading = { reading ->
+                if (reading == "ㄋㄧˇㄐㄧㄚˉ") listOf("你家") else emptyList()
+            },
+            candidatesForReading = { reading ->
+                when (reading) {
+                    "ㄋㄧˇㄐㄧㄚˉ" -> listOf("你家")
+                    "ㄋㄧˇ" -> listOf("你")
+                    "ㄐㄧㄚˉ" -> listOf("家")
+                    "ㄖㄣˊ" -> listOf("人")
+                    else -> emptyList()
+                }
+            }
+        )
+
+        assertNotNull(match)
+        assertEquals("ㄋㄧˇㄐㄧㄚˉ", match?.reading)
+        assertEquals(listOf("你家"), match?.candidates)
+        assertEquals("ㄖㄣˊ", raw.substring(match?.end ?: 0))
+    }
+
+    @Test
     fun composesMissingPhraseFromSyllablesAndNormalizesYiToneSandhi() {
         val raw = "ㄓㄜˋㄧˋㄅㄢˇ"
         val segments = ZhuyinComposition.splitSegments(raw, knownSyllables::contains)

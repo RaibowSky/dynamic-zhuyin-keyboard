@@ -8,7 +8,8 @@
         android:label="@string/subtype_zh_TW_keyboard"
         android:imeSubtypeLocale="zh_TW"
         android:imeSubtypeMode="keyboard"
-        android:imeSubtypeExtraValue="default"
+        android:imeSubtypeExtraValue="default,AsciiCapable"
+        android:isAsciiCapable="true"
         android:icon="@drawable/ic_launcher"/>
 
 </input-method>

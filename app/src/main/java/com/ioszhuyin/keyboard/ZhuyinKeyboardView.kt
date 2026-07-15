@@ -136,7 +136,7 @@ class ZhuyinKeyboardView @JvmOverloads constructor(
     var onBackspaceRelease: (() -> Unit)? = null
     var onSpace: (() -> Unit)? = null
     var onReturn: (() -> Unit)? = null
-    var onSwitchIme: (() -> Unit)? = null
+    var onCandidateConfirm: (() -> Unit)? = null
     var onCandidatePress: ((String) -> Unit)? = null
     var onCandidateExpansionToggle: (() -> Unit)? = null
     var onCandidatePageSwipe: ((Int) -> Unit)? = null
@@ -145,7 +145,6 @@ class ZhuyinKeyboardView @JvmOverloads constructor(
     var onEnglishMode: (() -> Unit)? = null
     var onSymbolChar: ((String) -> Unit)? = null  // 數字/符號模式直接 commit 字元
     var onToggleToZhuyin: (() -> Unit)? = null  // 數字/符號模式切回注音
-    var onEmojiMode: (() -> Unit)? = null
     var onToneSelected: ((String) -> Unit)? = null
 
     // ============================================================
@@ -250,8 +249,7 @@ class ZhuyinKeyboardView @JvmOverloads constructor(
         var rect: RectF = RectF()
     )
     private enum class ControlAction {
-        TOGGLE_FINALS, ENGLISH, NUMBER, SYMBOL, EMOJI, SPACE, RETURN, BACKSPACE,
-        TONE_SELECT
+        TOGGLE_FINALS, ENGLISH, NUMBER, SYMBOL, SPACE, RETURN, BACKSPACE, TONE_SELECT
     }
 
     private val zhuyinKeys = mutableListOf<ZhuyinKey>()
@@ -389,40 +387,50 @@ class ZhuyinKeyboardView @JvmOverloads constructor(
         y -= rowSpacing  // 最後一列不加分隔
         y += controlSpacing
 
-        // 控制列: 注音頁沿用 iOS 的 123 / 表情 / 空白 / 換行配置。
-        // 語言切換交給表情／下一個鍵盤按鈕開啟系統輸入法選擇器。
+        // 控制列: ABC / 注只切換本鍵盤語言；系統輸入法切換由導覽列處理。
         controlKeys.clear()
         val (actions, labels) = when {
             mode == Mode.ZHUYIN && showFinalPage -> Pair(
-                listOf(ControlAction.NUMBER, ControlAction.EMOJI,
+                listOf(ControlAction.NUMBER, ControlAction.ENGLISH,
                     ControlAction.SPACE, ControlAction.TONE_SELECT),
                 ImeBehavior.zhuyinControlLabels(showFinalPage = true)
             )
             mode == Mode.ZHUYIN -> Pair(
-                listOf(ControlAction.NUMBER, ControlAction.EMOJI,
+                listOf(ControlAction.NUMBER, ControlAction.ENGLISH,
                     ControlAction.SPACE, ControlAction.RETURN),
                 ImeBehavior.zhuyinControlLabels(
                     showFinalPage = false,
                     returnLabel = returnKeyLabel
                 )
             )
-            mode == Mode.ENGLISH -> Pair(
-                listOf(ControlAction.NUMBER, ControlAction.EMOJI,
-                    ControlAction.SPACE, ControlAction.RETURN),
-                listOf("123", "☺", "space", returnKeyLabel)
-            )
+            mode == Mode.ENGLISH -> if (zhuyinModeAllowed) {
+                Pair(
+                    listOf(ControlAction.NUMBER, ControlAction.TOGGLE_FINALS,
+                        ControlAction.SPACE, ControlAction.RETURN),
+                    listOf("123", "注", "space", returnKeyLabel)
+                )
+            } else {
+                Pair(
+                    listOf(ControlAction.NUMBER, ControlAction.SPACE, ControlAction.RETURN),
+                    listOf("123", "space", returnKeyLabel)
+                )
+            }
             mode == Mode.NUMBER || mode == Mode.SYMBOL -> Pair(
                 listOf(
                     if (zhuyinModeAllowed) ControlAction.TOGGLE_FINALS else ControlAction.ENGLISH,
-                    ControlAction.EMOJI,
-                    ControlAction.SPACE,
-                    ControlAction.RETURN
+                    *if (zhuyinModeAllowed) {
+                        arrayOf(ControlAction.ENGLISH, ControlAction.SPACE, ControlAction.RETURN)
+                    } else {
+                        arrayOf(ControlAction.SPACE, ControlAction.RETURN)
+                    }
                 ),
                 listOf(
                     if (zhuyinModeAllowed) "注" else "ABC",
-                    "☺",
-                    if (zhuyinModeAllowed) "空白" else "space",
-                    returnKeyLabel
+                    *if (zhuyinModeAllowed) {
+                        arrayOf("ABC", "空白", returnKeyLabel)
+                    } else {
+                        arrayOf("space", returnKeyLabel)
+                    }
                 )
             )
             else -> Pair(
@@ -528,10 +536,20 @@ class ZhuyinKeyboardView @JvmOverloads constructor(
             } else {
                 ZhuyinDynamicLayout.INITIAL_PAGE_ROWS
             }
+            val startSlots = ZhuyinDynamicLayout.rowStartSlots(
+                showFinalPage = showFinalPage,
+                configuredOffsets = listOf(
+                    metrics.rowOffset1,
+                    metrics.rowOffset2,
+                    metrics.rowOffset3
+                )
+            )
             listOf(
-                rowSpec(sourceRows[0], startSlot = metrics.rowOffset1),
-                rowSpec(sourceRows[1], startSlot = if (showFinalPage) 1f else metrics.rowOffset2),
-                if (showFinalPage) toneRowSpec(sourceRows[2]) else rowSpec(sourceRows[2], startSlot = metrics.rowOffset3)
+                rowSpec(sourceRows[0], startSlot = startSlots[0]),
+                rowSpec(sourceRows[1], startSlot = startSlots[1]),
+                if (showFinalPage) toneRowSpec(sourceRows[2]) else {
+                    rowSpec(sourceRows[2], startSlot = startSlots[2])
+                }
             )
         }
         Mode.ENGLISH -> listOf(
@@ -567,29 +585,24 @@ class ZhuyinKeyboardView @JvmOverloads constructor(
         )
 
     private fun auxiliaryThirdRowSpec(labels: List<String>): KeyRowSpec {
-        val punctuation = labels.subList(1, labels.lastIndex)
-        return KeyRowSpec(
-            listOf(KeySpec(labels.first(), 0f, 1.25f)) +
-                punctuation.mapIndexed { index, label ->
-                    KeySpec(label, 1.75f + index * 1.3f)
-                } +
-                listOf(KeySpec(labels.last(), 8.75f, 1.25f))
+        val slots = ZhuyinDynamicLayout.evenlyFilledRow(
+            keyCount = labels.size,
+            columnCount = columnCountForCurrentMode()
         )
+        return KeyRowSpec(labels.zip(slots) { label, geometry ->
+            KeySpec(label, geometry.slot, geometry.span)
+        })
     }
 
     private fun toneRowSpec(labels: List<String>): KeyRowSpec {
-        val tones = labels.filter { it in ZhuyinDynamicLayout.TONES }
-        return KeyRowSpec(
-            listOf(KeySpec("⇧", metrics.toneShiftSlot)) +
-                tones.mapIndexed { index, tone ->
-                    KeySpec(tone, metrics.toneStartSlot + index * metrics.toneKeyStep, metrics.toneKeyWidth)
-                } +
-                listOf(KeySpec("⌫", metrics.toneBackspaceSlot))
-        )
+        val slots = ZhuyinDynamicLayout.evenlyFilledRow(labels.size)
+        return KeyRowSpec(labels.zip(slots) { label, geometry ->
+            KeySpec(label, geometry.slot, geometry.span)
+        })
     }
 
     private fun columnCountForCurrentMode(): Int = when (mode) {
-        Mode.ZHUYIN -> 9
+        Mode.ZHUYIN -> ZhuyinDynamicLayout.COLUMN_COUNT
         Mode.ENGLISH -> 10
         Mode.NUMBER, Mode.SYMBOL -> 10
     }
@@ -727,13 +740,9 @@ class ZhuyinKeyboardView @JvmOverloads constructor(
                     val c = if (isPressed) colorControlBgPressed else colorControlBg
                     drawRoundRect(canvas, k.rect, c, cornerRadius)
                     paintControlText.color = colorControlText
-                    if (k.action == ControlAction.EMOJI) {
-                        drawMonochromeEmojiIcon(canvas, k.rect, colorControlText)
-                    } else {
-                        val cy = k.rect.centerY() -
-                            (paintControlText.ascent() + paintControlText.descent()) / 2
-                        canvas.drawText(k.label, k.rect.centerX(), cy, paintControlText)
-                    }
+                    val cy = k.rect.centerY() -
+                        (paintControlText.ascent() + paintControlText.descent()) / 2
+                    canvas.drawText(k.label, k.rect.centerX(), cy, paintControlText)
                 }
             }
         }
@@ -813,33 +822,6 @@ class ZhuyinKeyboardView @JvmOverloads constructor(
         }
         canvas.drawPath(path, paintRoundRect)
         paintRoundRect.strokeCap = Paint.Cap.BUTT
-        paintRoundRect.style = Paint.Style.FILL
-    }
-
-    private fun drawMonochromeEmojiIcon(canvas: Canvas, rect: RectF, color: Int) {
-        val radius = min(rect.width(), rect.height()) * 0.22f
-        val centerX = rect.centerX()
-        val centerY = rect.centerY()
-        paintRoundRect.color = color
-        paintRoundRect.style = Paint.Style.STROKE
-        paintRoundRect.strokeWidth = dp(1.5f)
-        canvas.drawCircle(centerX, centerY, radius, paintRoundRect)
-        paintRoundRect.style = Paint.Style.FILL
-        val eyeRadius = dp(1.2f)
-        canvas.drawCircle(centerX - radius * 0.36f, centerY - radius * 0.22f, eyeRadius, paintRoundRect)
-        canvas.drawCircle(centerX + radius * 0.36f, centerY - radius * 0.22f, eyeRadius, paintRoundRect)
-        paintRoundRect.style = Paint.Style.STROKE
-        paintRoundRect.strokeWidth = dp(1.5f)
-        canvas.drawArc(
-            centerX - radius * 0.48f,
-            centerY - radius * 0.02f,
-            centerX + radius * 0.48f,
-            centerY + radius * 0.55f,
-            12f,
-            156f,
-            false,
-            paintRoundRect
-        )
         paintRoundRect.style = Paint.Style.FILL
     }
 
@@ -935,6 +917,7 @@ class ZhuyinKeyboardView @JvmOverloads constructor(
                     onCandidatePageSwipe?.invoke(candidateSwipeDirection)
                 } else if (!candidateDragging && t != null && t == downTarget) {
                     handleTarget(t)
+                    if (t !is TouchTarget.CandidatePanel) performClick()
                 }
                 if (isBackspaceDown) {
                     onBackspaceRelease?.invoke()
@@ -965,6 +948,11 @@ class ZhuyinKeyboardView @JvmOverloads constructor(
             }
         }
         return super.onTouchEvent(event)
+    }
+
+    override fun performClick(): Boolean {
+        super.performClick()
+        return true
     }
 
     private fun findTarget(x: Float, y: Float): TouchTarget? {
@@ -999,7 +987,6 @@ class ZhuyinKeyboardView @JvmOverloads constructor(
                 when (controlKeys[t.idx].action) {
                     ControlAction.SPACE -> onSpace?.invoke()
                     ControlAction.RETURN -> onReturn?.invoke()
-                    ControlAction.EMOJI -> onEmojiMode?.invoke()
                     ControlAction.ENGLISH -> onEnglishMode?.invoke()
                     ControlAction.NUMBER -> onNumberMode?.invoke()
                     ControlAction.SYMBOL -> onSymbolMode?.invoke()
@@ -1013,7 +1000,7 @@ class ZhuyinKeyboardView @JvmOverloads constructor(
                     }
                     ControlAction.BACKSPACE -> { /* handled on DOWN */ }
                     ControlAction.TONE_SELECT -> {
-                        onReturn?.invoke()
+                        onCandidateConfirm?.invoke()
                     }
                 }
             }

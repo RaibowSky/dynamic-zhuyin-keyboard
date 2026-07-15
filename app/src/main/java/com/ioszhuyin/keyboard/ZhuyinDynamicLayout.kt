@@ -8,6 +8,34 @@ package com.ioszhuyin.keyboard
  */
 object ZhuyinDynamicLayout {
 
+    const val COLUMN_COUNT = 9
+
+    data class SlotGeometry(
+        val slot: Float,
+        val span: Float
+    )
+
+    fun rowStartSlots(showFinalPage: Boolean, configuredOffsets: List<Float>): List<Float> {
+        require(configuredOffsets.size == 3)
+        return listOf(
+            maxOf(configuredOffsets[0], 0.5f),
+            if (showFinalPage) 1f else configuredOffsets[1],
+            configuredOffsets[2]
+        )
+    }
+
+    fun evenlyFilledRow(
+        keyCount: Int,
+        columnCount: Int = COLUMN_COUNT
+    ): List<SlotGeometry> {
+        require(keyCount > 0)
+        require(columnCount > 0)
+        val span = columnCount.toFloat() / keyCount
+        return List(keyCount) { index ->
+            SlotGeometry(slot = index * span, span = span)
+        }
+    }
+
     val INITIAL_PAGE_ROWS: List<List<String>> = listOf(
         listOf("ㄅ", "ㄆ", "ㄇ", "ㄈ", "ㄉ", "ㄊ", "ㄋ", "ㄌ"),
         listOf("ㄍ", "ㄎ", "ㄏ", "ㄐ", "ㄑ", "ㄒ", "ㄧ", "ㄨ", "ㄩ"),

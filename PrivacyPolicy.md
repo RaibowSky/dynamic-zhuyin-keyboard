@@ -1,6 +1,6 @@
 # Privacy Policy
 
-Last updated: 2026-07-14
+Last updated: 2026-07-15
 
 This policy applies to the Android input method "Dynamic Zhuyin Keyboard".
 
@@ -22,7 +22,12 @@ information, or other input content over the network.
 ## Local Data
 
 The keyboard may store local candidate selection frequency on the device to
-adjust candidate ordering. This data remains on the device and is not uploaded.
+adjust candidate ordering. The app does not upload this data. Android cloud
+backup is disabled with `allowBackup=false`, and the backup rules exclude every
+supported app-data domain from Android cloud backup and Android-to-Android
+device transfer. Android 16 QPR2 cross-platform transfer is not configured
+because this project has no paired iOS app; this policy does not claim that
+mode is disabled.
 
 Standard exports contain only words manually added by the user and exclude
 candidate-learning records. A user may explicitly choose to include learning

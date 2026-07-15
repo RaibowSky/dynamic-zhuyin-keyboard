@@ -64,6 +64,7 @@ internal object ZhuyinComposition {
     fun resolveLeadingCandidates(
         raw: String,
         segments: List<ZhuyinSegment>,
+        preferredPrefixCandidatesForReading: (String) -> List<String> = { emptyList() },
         candidatesForReading: (String) -> List<String>
     ): CandidateMatch? {
         if (raw.isEmpty()) return null
@@ -80,6 +81,30 @@ internal object ZhuyinComposition {
                 start = 0,
                 end = raw.length
             )
+        }
+
+        // Prefer an explicitly prioritized multi-syllable prefix (currently a
+        // user-dictionary phrase) over a synthesized character-by-character
+        // candidate for the entire buffer. Ordinary dictionary prefixes stay
+        // below synthesis so readings such as 摺椅版 can still fall back to
+        // 這一版 instead of prematurely committing 摺椅.
+        val phrasePrefixEnds = segments
+            .drop(1)
+            .map { it.end }
+            .filter { it in 1 until raw.length }
+            .distinct()
+            .sortedDescending()
+        for (end in phrasePrefixEnds) {
+            val reading = raw.substring(0, end)
+            if (preferredPrefixCandidatesForReading(reading).isNotEmpty()) {
+                val candidates = candidatesForReading(reading)
+                return CandidateMatch(
+                    reading = reading,
+                    candidates = candidates,
+                    start = 0,
+                    end = end
+                )
+            }
         }
 
         val composedCandidates = composeSyllableCandidates(

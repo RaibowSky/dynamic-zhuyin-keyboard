@@ -19,6 +19,7 @@ import android.widget.SeekBar
 import android.widget.TextView
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
+import java.util.concurrent.Executors
 
 class MainActivity : AppCompatActivity() {
 
@@ -27,17 +28,27 @@ class MainActivity : AppCompatActivity() {
     private lateinit var zhuyinInput: EditText
     private lateinit var wordInput: EditText
     private lateinit var searchInput: EditText
+    private lateinit var listView: ListView
     private lateinit var statusText: TextView
     private lateinit var learningStatusText: TextView
     private lateinit var learningToggleButton: Button
+    private val dictionaryIo = Executors.newSingleThreadExecutor { task ->
+        Thread(task, "user-dictionary-io")
+    }
 
     private var entries: List<UserDictionaryEntry> = emptyList()
+    private var totalEntries: Int = 0
     private var selectedEntry: UserDictionaryEntry? = null
+    private var listRefreshGeneration: Long = 0
+    private var listLoading = false
     private val learningPreferencesListener =
-        SharedPreferences.OnSharedPreferenceChangeListener { _, key ->
+        SharedPreferences.OnSharedPreferenceChangeListener listener@ { _, key ->
             if (CandidateLearningSettings.isRecordsChange(key)) {
+                if (isFinishing || isDestroyed) return@listener
                 runOnUiThread {
+                    if (isFinishing || isDestroyed) return@runOnUiThread
                     if (::learningStatusText.isInitialized) refreshLearningStatus()
+                    if (::adapter.isInitialized && ::searchInput.isInitialized) refreshList()
                 }
             }
         }
@@ -50,13 +61,21 @@ class MainActivity : AppCompatActivity() {
     }
 
     override fun onDestroy() {
-        if (::store.isInitialized) store.close()
+        if (::store.isInitialized) {
+            runCatching {
+                dictionaryIo.execute { store.close() }
+            }.onFailure {
+                store.close()
+            }
+        }
+        dictionaryIo.shutdown()
         super.onDestroy()
     }
 
     override fun onStart() {
         super.onStart()
         CandidateLearningSettings.registerListener(this, learningPreferencesListener)
+        if (::adapter.isInitialized && ::searchInput.isInitialized) refreshList()
     }
 
     override fun onStop() {
@@ -116,12 +135,12 @@ class MainActivity : AppCompatActivity() {
         root.addView(subtitle, LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT)
 
         root.addView(
-            button("啟用鍵盤", 0xFF3B82F6.toInt()) {
+            button("啟用鍵盤", 0xFF2563EB.toInt()) {
                 startActivity(Intent(android.provider.Settings.ACTION_INPUT_METHOD_SETTINGS))
             }
         )
         root.addView(
-            button("切換鍵盤", 0xFF10B981.toInt()) {
+            button("切換鍵盤", 0xFF047857.toInt()) {
                 val imm = getSystemService(INPUT_METHOD_SERVICE) as InputMethodManager
                 imm.showInputMethodPicker()
             }
@@ -180,8 +199,8 @@ class MainActivity : AppCompatActivity() {
         root.addView(searchRow)
 
         val fileRow = row()
-        fileRow.addView(button("匯入", 0xFF0891B2.toInt()) { openImportFile() }, rowWeight())
-        fileRow.addView(button("匯出", 0xFF059669.toInt()) { chooseExportContent() }, rowWeight())
+        fileRow.addView(button("匯入", 0xFF0E7490.toInt()) { openImportFile() }, rowWeight())
+        fileRow.addView(button("匯出", 0xFF047857.toInt()) { chooseExportContent() }, rowWeight())
         root.addView(fileRow)
 
         if (isDebugBuild()) {
@@ -189,7 +208,7 @@ class MainActivity : AppCompatActivity() {
         }
 
         adapter = ArrayAdapter(this, android.R.layout.simple_list_item_activated_1, mutableListOf())
-        val listView = ListView(this).apply {
+        listView = ListView(this).apply {
             adapter = this@MainActivity.adapter
             choiceMode = ListView.CHOICE_MODE_SINGLE
             setOnItemClickListener { _, _, position, _ ->
@@ -204,7 +223,9 @@ class MainActivity : AppCompatActivity() {
         root.addView(listView, LinearLayout.LayoutParams.MATCH_PARENT, dp(260))
 
         val info = TextView(this).apply {
-            text = "匯入支援 JSON，或每行「注音<TAB>詞彙」的 TSV。一般匯出只包含手動新增詞彙；候選學習紀錄必須另外選擇並確認風險。"
+            text = "匯入支援 JSON，或每行「注音<TAB>詞彙」的 TSV；" +
+                "檔案上限 16 MB、總筆數上限 50,000。一般匯出只包含手動新增詞彙；" +
+                "候選學習紀錄必須另外選擇並確認風險。"
             textSize = 13f
             setTextColor(0xFF6B7280.toInt())
             setPadding(0, dp(12), 0, 0)
@@ -215,35 +236,55 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun addEntry() {
-        runCatching {
-            store.addEntry(zhuyinInput.text.toString(), wordInput.text.toString())
-        }.onSuccess {
+        val zhuyin = zhuyinInput.text.toString()
+        val word = wordInput.text.toString()
+        runDictionaryTask("新增失敗", operation = {
+            store.addEntry(zhuyin, word)
+        }) {
             toast("已新增詞彙")
-            clearSelection()
+            if (
+                selectedEntry == null &&
+                zhuyinInput.text.toString() == zhuyin &&
+                wordInput.text.toString() == word
+            ) {
+                clearSelection()
+            }
             refreshList()
-        }.onFailure {
-            toast(it.message ?: "新增失敗")
         }
     }
 
     private fun updateEntry() {
+        if (listLoading) {
+            toast("字典正在載入，請稍候")
+            return
+        }
         val entry = selectedEntry
         if (entry == null) {
             toast("請先點選要編輯的詞彙")
             return
         }
-        runCatching {
-            store.updateEntry(entry.id, zhuyinInput.text.toString(), wordInput.text.toString())
-        }.onSuccess {
+        val zhuyin = zhuyinInput.text.toString()
+        val word = wordInput.text.toString()
+        runDictionaryTask("更新失敗", operation = {
+            check(store.updateEntry(entry.id, zhuyin, word)) { "找不到要更新的詞彙" }
+        }) {
             toast("已更新詞彙")
-            clearSelection()
+            if (
+                selectedEntry?.id == entry.id &&
+                zhuyinInput.text.toString() == zhuyin &&
+                wordInput.text.toString() == word
+            ) {
+                clearSelection()
+            }
             refreshList()
-        }.onFailure {
-            toast(it.message ?: "更新失敗")
         }
     }
 
     private fun confirmDelete() {
+        if (listLoading) {
+            toast("字典正在載入，請稍候")
+            return
+        }
         val entry = selectedEntry
         if (entry == null) {
             toast("請先點選要刪除的詞彙")
@@ -253,21 +294,69 @@ class MainActivity : AppCompatActivity() {
             .setTitle("刪除詞彙")
             .setMessage("確定刪除「${entry.zhuyin} → ${entry.word}」嗎？")
             .setPositiveButton("刪除") { _, _ ->
-                store.deleteEntry(entry.id)
-                clearSelection()
-                refreshList()
-                toast("已刪除詞彙")
+                if (listLoading || selectedEntry != entry) {
+                    toast("字典內容已更新，請重新選取詞彙")
+                    return@setPositiveButton
+                }
+                runDictionaryTask("刪除失敗", operation = {
+                    check(store.deleteEntry(entry)) { "詞彙已更新或不存在，請重新選取" }
+                }) {
+                    if (selectedEntry?.id == entry.id) clearSelection()
+                    refreshList()
+                    toast("已刪除詞彙")
+                }
             }
             .setNegativeButton("取消", null)
             .show()
     }
 
     private fun refreshList() {
-        entries = store.search(searchInputOrEmpty())
+        val query = searchInputOrEmpty()
+        val generation = ++listRefreshGeneration
+        listLoading = true
+        entries = emptyList()
+        listView.clearChoices()
         adapter.clear()
-        adapter.addAll(entries.map { "${it.zhuyin}    ${it.word}" })
         adapter.notifyDataSetChanged()
-        statusText.text = "使用者字典：${entries.size} 筆"
+        statusText.text = "使用者字典：載入中…"
+        runCatching {
+            dictionaryIo.execute {
+                val result = runCatching {
+                    store.search(query, MAX_VISIBLE_ENTRIES) to store.entryCount(query)
+                }
+                postToUi {
+                    if (generation == listRefreshGeneration) {
+                        result.onSuccess { (visibleEntries, total) ->
+                            listLoading = false
+                            entries = visibleEntries
+                            totalEntries = total
+                            selectedEntry = selectedEntry?.let { selected ->
+                                visibleEntries.firstOrNull { it.id == selected.id }
+                            }
+                            adapter.clear()
+                            adapter.addAll(entries.map { "${it.zhuyin}    ${it.word}" })
+                            adapter.notifyDataSetChanged()
+                            listView.clearChoices()
+                            selectedEntry?.let { selected ->
+                                val position = entries.indexOfFirst { it.id == selected.id }
+                                if (position >= 0) listView.setItemChecked(position, true)
+                            }
+                            statusText.text = dictionaryStatusText()
+                        }.onFailure {
+                            listLoading = false
+                            selectedEntry = null
+                            statusText.text = "使用者字典：載入失敗"
+                            toast(it.message ?: "載入字典失敗")
+                        }
+                    }
+                }
+            }
+        }.onFailure {
+            listLoading = false
+            selectedEntry = null
+            statusText.text = "使用者字典：載入失敗"
+            toast(it.message ?: "載入字典失敗")
+        }
     }
 
     private fun refreshLearningStatus() {
@@ -298,9 +387,10 @@ class MainActivity : AppCompatActivity() {
             .setTitle("清除候選學習紀錄")
             .setMessage("確定清除 $count 筆候選排序紀錄嗎？手動新增的使用者詞彙不會被刪除。")
             .setPositiveButton("清除") { _, _ ->
-                val deleted = store.clearLearning()
-                refreshLearningStatus()
-                toast("已清除 $deleted 筆候選學習紀錄")
+                runDictionaryTask("清除失敗", operation = store::clearLearning) { deleted ->
+                    refreshLearningStatus()
+                    toast("已清除 $deleted 筆候選學習紀錄")
+                }
             }
             .setNegativeButton("取消", null)
             .show()
@@ -308,9 +398,13 @@ class MainActivity : AppCompatActivity() {
 
     private fun clearSelection() {
         selectedEntry = null
+        if (::listView.isInitialized) {
+            listView.clearChoices()
+            listView.invalidateViews()
+        }
         zhuyinInput.setText("")
         wordInput.setText("")
-        statusText.text = "使用者字典：${entries.size} 筆"
+        statusText.text = dictionaryStatusText()
     }
 
     private fun openImportFile() {
@@ -378,38 +472,102 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun importDictionary(uri: Uri) {
-        runCatching {
-            store.importFromUri(contentResolver, uri)
-        }.onSuccess { result ->
-            refreshList()
-            refreshLearningStatus()
-            toast(
-                if (result.learning > 0) {
-                    "已匯入 ${result.entries} 筆詞彙、${result.learning} 筆學習紀錄"
-                } else {
-                    "已匯入 ${result.entries} 筆詞彙"
-                }
+        toast("正在匯入…")
+        dictionaryIo.execute {
+            val result = runCatching { store.importFromUri(contentResolver, uri) }
+            if (result.isSuccess) {
+                CandidateLearningSettings.notifyRecordsChanged(applicationContext)
+            }
+            val resultMessage = result.fold(
+                onSuccess = { imported ->
+                    if (imported.learning > 0) {
+                        "已匯入 ${imported.entries} 筆詞彙、${imported.learning} 筆學習紀錄"
+                    } else {
+                        "已匯入 ${imported.entries} 筆詞彙"
+                    }
+                },
+                onFailure = { it.message ?: "匯入失敗" }
             )
-        }.onFailure {
-            toast(it.message ?: "匯入失敗")
+            postToUi(fallbackMessage = resultMessage) {
+                result.onSuccess {
+                    refreshList()
+                    refreshLearningStatus()
+                    toast(resultMessage)
+                }.onFailure {
+                    toast(resultMessage)
+                }
+            }
         }
     }
 
     private fun exportDictionary(uri: Uri, includeLearning: Boolean) {
-        runCatching {
-            store.exportToUri(contentResolver, uri, includeLearning)
-        }.onSuccess {
-            toast(
-                if (includeLearning) {
-                    "已匯出使用者字典與學習紀錄"
-                } else {
-                    "已匯出使用者字典"
-                }
+        toast("正在匯出…")
+        dictionaryIo.execute {
+            val result = runCatching {
+                store.exportToUri(contentResolver, uri, includeLearning)
+            }
+            val resultMessage = result.fold(
+                onSuccess = {
+                    if (includeLearning) {
+                        "已匯出使用者字典與學習紀錄"
+                    } else {
+                        "已匯出使用者字典"
+                    }
+                },
+                onFailure = { it.message ?: "匯出失敗" }
             )
-        }.onFailure {
-            toast(it.message ?: "匯出失敗")
+            postToUi(fallbackMessage = resultMessage) {
+                result.onSuccess {
+                    toast(resultMessage)
+                }.onFailure {
+                    toast(resultMessage)
+                }
+            }
         }
     }
+
+    private fun postToUi(fallbackMessage: String? = null, action: () -> Unit) {
+        runOnUiThread {
+            if (!isFinishing && !isDestroyed) {
+                action()
+            } else if (fallbackMessage != null) {
+                Toast.makeText(applicationContext, fallbackMessage, Toast.LENGTH_SHORT).show()
+            }
+        }
+    }
+
+    private fun <T> runDictionaryTask(
+        fallbackError: String,
+        operation: () -> T,
+        onSuccess: (T) -> Unit
+    ) {
+        runCatching {
+            dictionaryIo.execute {
+                val result = runCatching(operation)
+                if (result.isSuccess) {
+                    CandidateLearningSettings.notifyRecordsChanged(applicationContext)
+                }
+                val fallbackMessage = result.fold(
+                    onSuccess = { "字典變更已完成" },
+                    onFailure = { it.message ?: fallbackError }
+                )
+                postToUi(fallbackMessage = fallbackMessage) {
+                    result.onSuccess(onSuccess).onFailure {
+                        toast(it.message ?: fallbackError)
+                    }
+                }
+            }
+        }.onFailure {
+            toast(it.message ?: fallbackError)
+        }
+    }
+
+    private fun dictionaryStatusText(): String =
+        if (totalEntries > entries.size) {
+            "使用者字典：$totalEntries 筆（顯示前 ${entries.size} 筆）"
+        } else {
+            "使用者字典：$totalEntries 筆"
+        }
 
     private fun setOverlayImage(uri: Uri, data: Intent?) {
         runCatching {
@@ -616,8 +774,8 @@ class MainActivity : AppCompatActivity() {
                 }
             }
             layoutParams = LinearLayout.LayoutParams(
-                if (symbol.length == 1) dp(46) else dp(76),
-                dp(42)
+                if (symbol.length == 1) dp(48) else dp(76),
+                dp(48)
             ).apply {
                 marginEnd = dp(6)
                 bottomMargin = dp(6)
@@ -685,5 +843,6 @@ class MainActivity : AppCompatActivity() {
         private const val REQUEST_OVERLAY = 1003
         private const val REQUEST_EXPORT_WITH_LEARNING = 1004
         private const val SLIDER_SCALE = 10f
+        private const val MAX_VISIBLE_ENTRIES = 500
     }
 }

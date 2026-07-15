@@ -71,13 +71,15 @@
 
 除 `NOTICE.md` 明確列出的第三方資料外，本 repository 不包含任何第三方程式碼、專有詞庫、視覺素材或其他受版權保護內容。
 
-目前候選字典的詞條與讀音來自 CC-CEDICT；預設候選順序使用 McBopomofo 的彙總詞頻資料調整。兩者的來源、固定版本、轉換方式與授權請參閱 `NOTICE.md`。
+目前候選字典的詞條與讀音來自 CC-CEDICT；預設候選順序使用 McBopomofo 的彙總詞頻資料調整。鍵盤注音 glyph 使用 ToneOZ Pinyin WenKai 的固定版本 subset。來源、轉換方式與授權請參閱 `NOTICE.md`。
+
+該 subset 包含 U+3105-U+3129 與鍵盤使用的五個聲調符號（包含一聲 U+02C9），SHA-256 為 `7d2630c930012253c214100dae4fdccef582ed02be6bcbc313bed831ad672800`。
 
 ## 授權狀態
 
 目前本專案原始碼尚未另外指定開源授權；除非之後加入 `LICENSE` 檔案，否則專案擁有者保留所有權利。
 
-第三方資料仍依各自授權條款使用。由 CC-CEDICT 轉換而來的候選字典遵守 CC BY-SA 4.0；用於候選排序的 McBopomofo 彙總詞頻資料遵守 MIT License。完整標示請見 `NOTICE.md`。
+第三方資料仍依各自授權條款使用。由 CC-CEDICT 轉換而來的候選字典遵守 CC BY-SA 4.0；用於候選排序的 McBopomofo 彙總詞頻資料遵守 MIT License；ToneOZ 字型 subset 遵守 SIL Open Font License 1.1。完整標示請見 `NOTICE.md`。
 
 ## 開發提醒
 
