@@ -22,12 +22,10 @@ class IOSZhuyinIME : InputMethodService() {
 
     private val composingText = StringBuilder()
     private var allCandidates: List<String> = emptyList()
+    private var candidateChoices: List<CandidateChoice> = emptyList()
     private var selectedCandidateIndex: Int = -1
     private var candidatePage: Int = 0
     private var candidatesExpanded: Boolean = false
-    private var activeSegmentStart: Int = 0
-    private var activeSegmentEnd: Int = 0
-    private var activeCandidatesProvisional: Boolean = false
     private var showingPunctuationSuggestions: Boolean = false
     private var showFinalPage: Boolean = false
 
@@ -87,16 +85,31 @@ class IOSZhuyinIME : InputMethodService() {
         }
 
         val userCandidates = userCandidatesForKey(raw)
-        if (dictionaryCandidates.isEmpty() && userCandidates.isEmpty()) {
-            sortedCandidateCache[raw] = emptyList()
-            return emptyList()
-        }
+        val lookupReadings = lookupVariants(raw)
         val learnedCounts = runCatching {
-            userDictionaryStore.getLearningCounts(lookupVariants(raw))
+            userDictionaryStore.getLearningCounts(lookupReadings)
         }.onFailure {
             Log.w(TAG, "Unable to load candidate learning", it)
         }.getOrDefault(emptyMap())
-        return CandidateRanking.order(userCandidates, dictionaryCandidates, learnedCounts).also {
+        val learnedCandidates = runCatching {
+            userDictionaryStore.getLearnedCandidates(lookupReadings)
+        }.onFailure {
+            Log.w(TAG, "Unable to load learned candidates", it)
+        }.getOrDefault(emptyList())
+        if (
+            dictionaryCandidates.isEmpty() &&
+            userCandidates.isEmpty() &&
+            learnedCandidates.isEmpty()
+        ) {
+            sortedCandidateCache[raw] = emptyList()
+            return emptyList()
+        }
+        return CandidateRanking.order(
+            manualCandidates = userCandidates,
+            dictionaryCandidates = dictionaryCandidates,
+            learnedCounts = learnedCounts,
+            learnedCandidates = learnedCandidates
+        ).also {
             sortedCandidateCache[raw] = it
         }
     }
@@ -187,7 +200,7 @@ class IOSZhuyinIME : InputMethodService() {
         view.onSpace = { handleSpace() }
         view.onReturn = { handleReturn() }
         view.onCandidateConfirm = { handleCandidateConfirm() }
-        view.onCandidatePress = { candidate -> handleCandidatePress(candidate) }
+        view.onCandidatePress = { candidateIndex -> handleCandidatePress(candidateIndex) }
         view.onCandidateExpansionToggle = { toggleCandidateExpansion() }
         view.onCandidatePageSwipe = { delta -> moveCandidatePage(delta) }
         view.onEnglishMode = { handleEnglishMode() }
@@ -248,12 +261,10 @@ class IOSZhuyinIME : InputMethodService() {
         val raw = composingText.toString()
         if (raw.isEmpty()) {
             allCandidates = emptyList()
+            candidateChoices = emptyList()
             selectedCandidateIndex = -1
             candidatePage = 0
             candidatesExpanded = false
-            activeSegmentStart = 0
-            activeSegmentEnd = 0
-            activeCandidatesProvisional = false
             showingPunctuationSuggestions = false
             val editorAccepted = !syncEditorComposition ||
                 syncEditorComposing(clearEmptyComposition = clearEmptyEditorComposition)
@@ -270,10 +281,8 @@ class IOSZhuyinIME : InputMethodService() {
             prefixCandidatesForReading = ::prefixCandidatesForKey,
             candidatesForReading = ::getSortedCandidates
         )
-        allCandidates = match?.candidates.orEmpty()
-        activeSegmentStart = match?.start ?: 0
-        activeSegmentEnd = match?.end ?: raw.length
-        activeCandidatesProvisional = match?.isProvisional == true
+        candidateChoices = match?.choices.orEmpty()
+        allCandidates = candidateChoices.map(CandidateChoice::text)
 
         selectedCandidateIndex = when {
             allCandidates.isEmpty() -> -1
@@ -452,11 +461,11 @@ class IOSZhuyinIME : InputMethodService() {
         vibrateLight()
     }
 
-    private fun handleCandidatePress(candidate: String) {
+    private fun handleCandidatePress(candidateIndex: Int) {
         if (showingPunctuationSuggestions && composingText.isEmpty()) {
-            commitPunctuationSuggestion(candidate)
+            allCandidates.getOrNull(candidateIndex)?.let(::commitPunctuationSuggestion)
         } else {
-            commitSelectedCandidate(candidate)
+            commitSelectedCandidate(candidateIndexOverride = candidateIndex)
         }
     }
 
@@ -481,7 +490,7 @@ class IOSZhuyinIME : InputMethodService() {
     }
 
     private fun commitSelectedCandidate(
-        candidateOverride: String? = null,
+        candidateIndexOverride: Int? = null,
         provideFeedback: Boolean = true,
         recordLearning: Boolean = true
     ): CandidateCommitResult {
@@ -489,19 +498,20 @@ class IOSZhuyinIME : InputMethodService() {
             return CandidateCommitResult.EDITOR_REJECTED
         }
         val ic = currentInputConnection ?: return CandidateCommitResult.EDITOR_REJECTED
-        if (allCandidates.isEmpty()) return CandidateCommitResult.NO_CANDIDATE
+        if (candidateChoices.isEmpty()) return CandidateCommitResult.NO_CANDIDATE
 
-        val candidate = candidateOverride
-            ?: allCandidates.getOrNull(selectedCandidateIndex)
+        val choice = candidateChoices.getOrNull(
+            candidateIndexOverride ?: selectedCandidateIndex
+        )
             ?: return CandidateCommitResult.NO_CANDIDATE
-        val start = activeSegmentStart.coerceIn(0, composingText.length)
-        val end = activeSegmentEnd.coerceIn(start, composingText.length)
+        val start = choice.start.coerceIn(0, composingText.length)
+        val end = choice.end.coerceIn(start, composingText.length)
         val raw = composingText.toString()
         val edit = CompositionEditing.candidateSelection(
             raw = raw,
             start = start,
             end = end,
-            candidate = candidate
+            candidate = choice.text
         )
         val tracksCurrentComposition = editorComposingStart >= 0 &&
             editorComposingEnd - editorComposingStart == raw.length &&
@@ -594,7 +604,7 @@ class IOSZhuyinIME : InputMethodService() {
                 } else {
                     // A synchronous callback already supplied the current bounds.
                 }
-                if (recordLearning && !activeCandidatesProvisional) {
+                if (recordLearning && !choice.isProvisional) {
                     wordSelected(edit.reading, edit.committedText)
                 }
                 recomputePageFromComposing()
@@ -612,7 +622,7 @@ class IOSZhuyinIME : InputMethodService() {
                     editorSelectionStart = cursor
                     editorSelectionEnd = cursor
                 }
-                if (recordLearning && !activeCandidatesProvisional) {
+                if (recordLearning && !choice.isProvisional) {
                     wordSelected(edit.reading, edit.committedText)
                 }
                 resetToInitial()
@@ -850,13 +860,11 @@ class IOSZhuyinIME : InputMethodService() {
         } else {
             PunctuationSuggestions.FULL_WIDTH
         }
+        candidateChoices = emptyList()
         showingPunctuationSuggestions = true
         selectedCandidateIndex = -1
         candidatePage = 0
         candidatesExpanded = false
-        activeSegmentStart = 0
-        activeSegmentEnd = 0
-        activeCandidatesProvisional = false
         syncKeyboardView()
     }
 
@@ -926,7 +934,8 @@ class IOSZhuyinIME : InputMethodService() {
         while (composingText.isNotEmpty()) {
             if (editorCompositionPending && !syncEditorComposing()) return false
             val previousLength = composingText.length
-            if (allCandidates.isNotEmpty() && !activeCandidatesProvisional) {
+            val selectedChoice = candidateChoices.getOrNull(selectedCandidateIndex)
+            if (selectedChoice != null && !selectedChoice.isProvisional) {
                 when (
                     commitSelectedCandidate(
                         provideFeedback = false,
@@ -972,12 +981,10 @@ class IOSZhuyinIME : InputMethodService() {
         editorComposingStart = -1
         editorComposingEnd = -1
         allCandidates = emptyList()
+        candidateChoices = emptyList()
         selectedCandidateIndex = -1
         candidatePage = 0
         candidatesExpanded = false
-        activeSegmentStart = 0
-        activeSegmentEnd = 0
-        activeCandidatesProvisional = false
         showingPunctuationSuggestions = false
         showFinalPage = false
         syncKeyboardView()

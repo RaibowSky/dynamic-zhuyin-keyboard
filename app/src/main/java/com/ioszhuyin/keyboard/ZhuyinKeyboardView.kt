@@ -136,7 +136,7 @@ class ZhuyinKeyboardView @JvmOverloads constructor(
     var onSpace: (() -> Unit)? = null
     var onReturn: (() -> Unit)? = null
     var onCandidateConfirm: (() -> Unit)? = null
-    var onCandidatePress: ((String) -> Unit)? = null
+    var onCandidatePress: ((Int) -> Unit)? = null
     var onCandidateExpansionToggle: (() -> Unit)? = null
     var onCandidatePageSwipe: ((Int) -> Unit)? = null
     var onNumberMode: (() -> Unit)? = null
@@ -974,7 +974,7 @@ class ZhuyinKeyboardView @JvmOverloads constructor(
     private fun handleTarget(t: TouchTarget) {
         when (t) {
             is TouchTarget.Candidate -> {
-                candidates.getOrNull(t.idx)?.let { onCandidatePress?.invoke(it) }
+                if (t.idx in candidates.indices) onCandidatePress?.invoke(t.idx)
             }
             is TouchTarget.MorePage -> onCandidateExpansionToggle?.invoke()
             is TouchTarget.CandidatePanel -> {}

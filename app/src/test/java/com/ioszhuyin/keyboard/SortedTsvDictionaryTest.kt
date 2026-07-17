@@ -1,6 +1,8 @@
 package com.ioszhuyin.keyboard
 
 import java.nio.ByteBuffer
+import java.nio.file.Files
+import java.nio.file.Path
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
@@ -8,6 +10,72 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class SortedTsvDictionaryTest {
+
+    @Test
+    fun unknownPhraseCanSelectLeadingCharacterAndKeepKnownSuffix() {
+        val asset = Path.of("src", "main", "assets", "zhuyin_cedict.tsv")
+        val reader = SortedTsvDictionary(ByteBuffer.wrap(Files.readAllBytes(asset)))
+        val syllables = listOf("ㄢˋ", "ㄅㄨˋ", "ㄉㄠˋ")
+        val raw = syllables.joinToString("")
+        var offset = 0
+        val segments = syllables.map { syllable ->
+            val start = offset
+            offset += syllable.length
+            ZhuyinSegment(syllable, start, offset, hasTone = true)
+        }
+
+        val match = ZhuyinComposition.resolveLeadingCandidates(raw, segments) { reading ->
+            reader.getCandidates(reading).orEmpty()
+        }
+
+        assertEquals(raw, match?.reading)
+        assertTrue("按" in match?.candidates.orEmpty())
+        assertEquals(raw.length, match?.choices?.first()?.end)
+        val leadingChoice = match?.choices?.first { it.text == "按" }
+        assertEquals("ㄢˋ", leadingChoice?.reading)
+        assertEquals("ㄅㄨˋㄉㄠˋ", raw.substring(leadingChoice?.end ?: 0))
+
+        val edit = requireNotNull(leadingChoice).let { choice ->
+            CompositionEditing.candidateSelection(
+                raw = raw,
+                start = choice.start,
+                end = choice.end,
+                candidate = choice.text
+            )
+        }
+        assertEquals("按", edit.committedText)
+        assertEquals("ㄅㄨˋㄉㄠˋ", edit.remainingText)
+    }
+
+    @Test
+    fun bundledDictionaryContainsCommonTaiwanPhraseReadings() {
+        val asset = Path.of("src", "main", "assets", "zhuyin_cedict.tsv")
+        val reader = SortedTsvDictionary(ByteBuffer.wrap(Files.readAllBytes(asset)))
+
+        assertEquals("這是", reader.getCandidates("ㄓㄜˋㄕˋ")?.first())
+        assertEquals("這是", reader.getCandidates("ㄓㄜㄕ")?.first())
+        assertEquals("做出來", reader.getCandidates("ㄗㄨㄛˋㄔㄨㄌㄞˊ")?.first())
+        assertEquals("所以", reader.getCandidates("ㄙㄨㄛˇㄧˇ")?.first())
+        assertEquals("現在", reader.getCandidates("ㄒㄧㄢˋㄗㄞˋ")?.first())
+        assertEquals("動態", reader.getCandidates("ㄉㄨㄥˋㄊㄞˋ")?.first())
+        assertEquals("鍵盤", reader.getCandidates("ㄐㄧㄢˋㄆㄢˊ")?.first())
+
+        val syllables = listOf("ㄙㄨㄛˇ", "ㄧˇ", "ㄨㄛˇ", "ㄒㄧㄢˋ", "ㄗㄞˋ")
+        val raw = syllables.joinToString("")
+        var offset = 0
+        val segments = syllables.map { syllable ->
+            val start = offset
+            offset += syllable.length
+            ZhuyinSegment(syllable, start, offset, hasTone = true)
+        }
+        val match = ZhuyinComposition.resolveLeadingCandidates(raw, segments) { reading ->
+            reader.getCandidates(reading).orEmpty()
+        }
+
+        assertEquals("ㄙㄨㄛˇㄧˇ", match?.reading)
+        assertEquals("所以", match?.candidates?.first())
+        assertEquals("ㄨㄛˇㄒㄧㄢˋㄗㄞˋ", raw.substring(match?.end ?: 0))
+    }
 
     @Test
     fun binarySearchFindsFirstMiddleAndLastRows() {

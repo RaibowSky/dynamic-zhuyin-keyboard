@@ -7,16 +7,34 @@ internal data class ZhuyinSegment(
     val hasTone: Boolean
 )
 
-internal data class CandidateMatch(
+internal data class CandidateChoice(
+    val text: String,
     val reading: String,
-    val candidates: List<String>,
     val start: Int,
     val end: Int,
     val isProvisional: Boolean = false
 )
 
+internal data class CandidateMatch(
+    val reading: String,
+    val candidates: List<String>,
+    val start: Int,
+    val end: Int,
+    val isProvisional: Boolean = false,
+    val choices: List<CandidateChoice> = candidates.map { candidate ->
+        CandidateChoice(
+            text = candidate,
+            reading = reading,
+            start = start,
+            end = end,
+            isProvisional = isProvisional
+        )
+    }
+)
+
 internal object ZhuyinComposition {
     private const val MAX_SYLLABLE_LENGTH = 3
+    private const val MAX_COMPOSED_SYLLABLES = 3
     private const val MAX_CHOICES_PER_SYLLABLE = 3
     private const val MAX_FALLBACK_CANDIDATES = 9
     private val toneChars = setOf('ˉ', '˙', 'ˊ', 'ˇ', 'ˋ')
@@ -77,19 +95,24 @@ internal object ZhuyinComposition {
 
         val fullCandidates = candidatesForReading(raw)
         if (fullCandidates.isNotEmpty()) {
-            return CandidateMatch(
-                reading = raw,
-                candidates = fullCandidates,
-                start = 0,
-                end = raw.length
+            return withLeadingCharacterAlternatives(
+                match = CandidateMatch(
+                    reading = raw,
+                    candidates = fullCandidates,
+                    start = 0,
+                    end = raw.length
+                ),
+                raw = raw,
+                segments = segments,
+                candidatesForReading = candidatesForReading
             )
         }
 
         // Prefer an explicitly prioritized multi-syllable prefix (currently a
         // user-dictionary phrase) over a synthesized character-by-character
-        // candidate for the entire buffer. Ordinary dictionary prefixes stay
-        // below synthesis so readings such as 摺椅版 can still fall back to
-        // 這一版 instead of prematurely committing 摺椅.
+        // candidate for the entire buffer. Generic dictionary-prefix fallback
+        // stays below synthesis; every multi-syllable result is mixed with
+        // leading-character alternatives before it is shown.
         val phrasePrefixEnds = segments
             .drop(1)
             .map { it.end }
@@ -100,11 +123,16 @@ internal object ZhuyinComposition {
             val reading = raw.substring(0, end)
             if (preferredPrefixCandidatesForReading(reading).isNotEmpty()) {
                 val candidates = candidatesForReading(reading)
-                return CandidateMatch(
-                    reading = reading,
-                    candidates = candidates,
-                    start = 0,
-                    end = end
+                return withLeadingCharacterAlternatives(
+                    match = CandidateMatch(
+                        reading = reading,
+                        candidates = candidates,
+                        start = 0,
+                        end = end
+                    ),
+                    raw = raw,
+                    segments = segments,
+                    candidatesForReading = candidatesForReading
                 )
             }
         }
@@ -115,11 +143,16 @@ internal object ZhuyinComposition {
             candidatesForReading = candidatesForReading
         )
         if (composedCandidates.isNotEmpty()) {
-            return CandidateMatch(
-                reading = raw,
-                candidates = composedCandidates,
-                start = 0,
-                end = raw.length
+            return withLeadingCharacterAlternatives(
+                match = CandidateMatch(
+                    reading = raw,
+                    candidates = composedCandidates,
+                    start = 0,
+                    end = raw.length
+                ),
+                raw = raw,
+                segments = segments,
+                candidatesForReading = candidatesForReading
             )
         }
 
@@ -131,12 +164,17 @@ internal object ZhuyinComposition {
                 candidatesForReading = candidatesForReading
             )
             if (prefixCandidates.isNotEmpty()) {
-                return CandidateMatch(
-                    reading = raw,
-                    candidates = prefixCandidates,
-                    start = 0,
-                    end = raw.length,
-                    isProvisional = true
+                return withLeadingCharacterAlternatives(
+                    match = CandidateMatch(
+                        reading = raw,
+                        candidates = prefixCandidates,
+                        start = 0,
+                        end = raw.length,
+                        isProvisional = true
+                    ),
+                    raw = raw,
+                    segments = segments,
+                    candidatesForReading = candidatesForReading
                 )
             }
         }
@@ -145,15 +183,56 @@ internal object ZhuyinComposition {
             val reading = raw.substring(0, end)
             val candidates = candidatesForReading(reading)
             if (candidates.isNotEmpty()) {
-                return CandidateMatch(
-                    reading = reading,
-                    candidates = candidates,
-                    start = 0,
-                    end = end
+                return withLeadingCharacterAlternatives(
+                    match = CandidateMatch(
+                        reading = reading,
+                        candidates = candidates,
+                        start = 0,
+                        end = end
+                    ),
+                    raw = raw,
+                    segments = segments,
+                    candidatesForReading = candidatesForReading
                 )
             }
         }
         return null
+    }
+
+    private fun withLeadingCharacterAlternatives(
+        match: CandidateMatch,
+        raw: String,
+        segments: List<ZhuyinSegment>,
+        candidatesForReading: (String) -> List<String>
+    ): CandidateMatch {
+        if (match.start != 0 || match.candidates.isEmpty()) return match
+        val leadingSegment = segments.firstOrNull {
+            it.start == 0 && it.end in 1 until match.end
+        } ?: return match
+        val leadingReading = raw.substring(0, leadingSegment.end)
+        val leadingChoices = candidatesForReading(leadingReading)
+            .asSequence()
+            .filter(::isSingleCodePoint)
+            .map { candidate ->
+                CandidateChoice(
+                    text = candidate,
+                    reading = leadingReading,
+                    start = 0,
+                    end = leadingSegment.end
+                )
+            }
+            .toList()
+        if (leadingChoices.isEmpty()) return match
+
+        val mixedChoices = buildList {
+            add(match.choices.first())
+            addAll(leadingChoices)
+            addAll(match.choices.drop(1))
+        }.distinctBy { choice -> Triple(choice.text, choice.start, choice.end) }
+        return match.copy(
+            candidates = mixedChoices.map(CandidateChoice::text),
+            choices = mixedChoices
+        )
     }
 
     private fun prioritizePrefixCandidates(
@@ -188,6 +267,7 @@ internal object ZhuyinComposition {
     ): List<String> {
         if (
             segments.size < 2 ||
+            segments.size > MAX_COMPOSED_SYLLABLES ||
             segments.firstOrNull()?.start != 0 ||
             segments.lastOrNull()?.end != raw.length ||
             segments.any { !it.hasTone }
@@ -195,7 +275,10 @@ internal object ZhuyinComposition {
             return emptyList()
         }
 
-        var combinations = listOf("")
+        data class RankedCombination(val text: String, val rank: Int, val order: Int)
+
+        var nextOrder = 0
+        var combinations = listOf(RankedCombination("", rank = 0, order = nextOrder++))
         segments.forEachIndexed { index, segment ->
             val readings = linkedSetOf<String>()
             toneSandhiReading(segment, segments.getOrNull(index + 1))?.let(readings::add)
@@ -213,12 +296,21 @@ internal object ZhuyinComposition {
 
             combinations = combinations
                 .asSequence()
-                .flatMap { prefix -> choices.asSequence().map { prefix + it } }
-                .distinct()
+                .flatMap { prefix ->
+                    choices.asSequence().mapIndexed { choiceIndex, choice ->
+                        RankedCombination(
+                            text = prefix.text + choice,
+                            rank = prefix.rank + choiceIndex,
+                            order = nextOrder++
+                        )
+                    }
+                }
+                .sortedWith(compareBy<RankedCombination> { it.rank }.thenBy { it.order })
+                .distinctBy { it.text }
                 .take(MAX_FALLBACK_CANDIDATES)
                 .toList()
         }
-        return combinations
+        return combinations.map { it.text }
     }
 
     private fun toneSandhiReading(

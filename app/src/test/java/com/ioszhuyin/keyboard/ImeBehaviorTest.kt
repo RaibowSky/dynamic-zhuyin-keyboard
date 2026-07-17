@@ -20,6 +20,54 @@ class ImeBehaviorTest {
     }
 
     @Test
+    fun learnedFallbackCandidateIsPromotedAheadOfGeneratedCandidates() {
+        val ordered = CandidateRanking.order(
+            manualCandidates = emptyList(),
+            dictionaryCandidates = listOf("generated-first", "generated-second"),
+            learnedCounts = mapOf("chosen" to 1),
+            learnedCandidates = listOf("chosen")
+        )
+
+        assertEquals(listOf("chosen", "generated-first", "generated-second"), ordered)
+    }
+
+    @Test
+    fun manualCandidateStillOutranksLearnedFallbackCandidate() {
+        val ordered = CandidateRanking.order(
+            manualCandidates = listOf("manual"),
+            dictionaryCandidates = listOf("generated", "learned"),
+            learnedCounts = mapOf("learned" to 5),
+            learnedCandidates = listOf("learned")
+        )
+
+        assertEquals(listOf("manual", "learned", "generated"), ordered)
+    }
+
+    @Test
+    fun oneAccidentalSelectionDoesNotDisplaceTopDictionaryCandidate() {
+        val ordered = CandidateRanking.order(
+            manualCandidates = emptyList(),
+            dictionaryCandidates = listOf("top", "second", "accidental"),
+            learnedCounts = mapOf("accidental" to 1),
+            learnedCandidates = listOf("accidental")
+        )
+
+        assertEquals("top", ordered.first())
+    }
+
+    @Test
+    fun repeatedSelectionsGraduallyPromoteDictionaryCandidate() {
+        val ordered = CandidateRanking.order(
+            manualCandidates = emptyList(),
+            dictionaryCandidates = listOf("top", "second", "preferred"),
+            learnedCounts = mapOf("preferred" to 3),
+            learnedCandidates = listOf("preferred")
+        )
+
+        assertEquals("preferred", ordered.first())
+    }
+
+    @Test
     fun legacyLearningParserIsLosslessForColonsAndIgnoresInvalidCounts() {
         val parsed = LegacyCandidateLearning.parse(
             "字:2|詞:5|無效|負數:-1|冒:號:7|字:3|空白:0"

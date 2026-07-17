@@ -45,7 +45,8 @@ class ZhuyinCompositionTest {
 
         assertNotNull(match)
         assertEquals(raw, match?.reading)
-        assertEquals(listOf("中華"), match?.candidates)
+        assertEquals(listOf("中華", "中"), match?.candidates)
+        assertEquals(listOf(raw.length, "ㄓㄨㄥˉ".length), match?.choices?.map { it.end })
         assertEquals(raw.length, match?.end)
     }
 
@@ -64,7 +65,11 @@ class ZhuyinCompositionTest {
 
         assertNotNull(match)
         assertEquals("ㄓㄨㄥˉㄏㄨㄚˊ", match?.reading)
-        assertEquals(listOf("中華"), match?.candidates)
+        assertEquals(listOf("中華", "中"), match?.candidates)
+        assertEquals(
+            listOf("ㄓㄨㄥˉㄏㄨㄚˊ".length, "ㄓㄨㄥˉ".length),
+            match?.choices?.map { it.end }
+        )
         assertEquals("ㄖㄣˊ", raw.substring(match?.end ?: 0))
     }
 
@@ -115,7 +120,11 @@ class ZhuyinCompositionTest {
 
         assertNotNull(match)
         assertEquals("ㄋㄧˇㄐㄧㄚˉ", match?.reading)
-        assertEquals(listOf("你家"), match?.candidates)
+        assertEquals(listOf("你家", "你"), match?.candidates)
+        assertEquals(
+            listOf("ㄋㄧˇㄐㄧㄚˉ".length, "ㄋㄧˇ".length),
+            match?.choices?.map { it.end }
+        )
         assertEquals("ㄖㄣˊ", raw.substring(match?.end ?: 0))
     }
 
@@ -168,7 +177,12 @@ class ZhuyinCompositionTest {
             }
         )
 
-        assertEquals(listOf("你好", "擬合"), match?.candidates)
+        assertEquals(listOf("你好", "你", "妳", "擬", "擬合"), match?.candidates)
+        assertEquals(
+            listOf(raw.length, "ㄋㄧˇ".length, "ㄋㄧˇ".length, "ㄋㄧˇ".length, raw.length),
+            match?.choices?.map { it.end }
+        )
+        assertEquals(listOf(true, false, false, false, true), match?.choices?.map { it.isProvisional })
         assertEquals(true, match?.isProvisional)
     }
 
@@ -192,6 +206,87 @@ class ZhuyinCompositionTest {
         assertEquals(raw, match?.reading)
         assertEquals("這一版", match?.candidates?.first())
         assertEquals(raw.length, match?.end)
+    }
+
+    @Test
+    fun longTonedInputFallsBackToLongestExactPrefix() {
+        val raw = "abcde"
+        val segments = raw.indices.map { index ->
+            ZhuyinSegment(
+                text = raw.substring(index, index + 1),
+                start = index,
+                end = index + 1,
+                hasTone = true
+            )
+        }
+
+        val match = ZhuyinComposition.resolveLeadingCandidates(raw, segments) { reading ->
+            when (reading) {
+                "ab" -> listOf("prefix")
+                "a" -> listOf("A")
+                "b" -> listOf("B")
+                "c" -> listOf("C")
+                "d" -> listOf("D")
+                "e" -> listOf("E")
+                else -> emptyList()
+            }
+        }
+
+        assertEquals("ab", match?.reading)
+        assertEquals(listOf("prefix", "A"), match?.candidates)
+        assertEquals(listOf(2, 1), match?.choices?.map { it.end })
+        assertEquals("cde", raw.substring(match?.end ?: 0))
+    }
+
+    @Test
+    fun composedCandidateBeamKeepsSecondChoiceFromEarlierSyllable() {
+        val raw = "abc"
+        val segments = raw.indices.map { index ->
+            ZhuyinSegment(
+                text = raw.substring(index, index + 1),
+                start = index,
+                end = index + 1,
+                hasTone = true
+            )
+        }
+
+        val match = ZhuyinComposition.resolveLeadingCandidates(raw, segments) { reading ->
+            when (reading) {
+                "a" -> listOf("X", "Y", "Z")
+                "b" -> listOf("P", "Q", "R")
+                "c" -> listOf("L", "M", "N")
+                else -> emptyList()
+            }
+        }
+
+        assertEquals(true, "YPL" in match?.candidates.orEmpty())
+    }
+
+    @Test
+    fun knownSuffixCanBeKeptWhileSelectingUnknownPhrasePrefix() {
+        val raw = "abc"
+        val segments = raw.indices.map { index ->
+            ZhuyinSegment(
+                text = raw.substring(index, index + 1),
+                start = index,
+                end = index + 1,
+                hasTone = true
+            )
+        }
+
+        val match = ZhuyinComposition.resolveLeadingCandidates(raw, segments) { reading ->
+            when (reading) {
+                "a" -> listOf("right", "other")
+                "bc" -> listOf("known suffix")
+                "b" -> listOf("B")
+                "c" -> listOf("C")
+                else -> emptyList()
+            }
+        }
+
+        assertEquals("a", match?.reading)
+        assertEquals(listOf("right", "other"), match?.candidates)
+        assertEquals("bc", raw.substring(match?.end ?: 0))
     }
 
     @Test

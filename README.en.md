@@ -85,13 +85,14 @@ The currently bundled dictionary asset is:
 
 - `app/src/main/assets/zhuyin_cedict.tsv`
 
-Its entries and readings were generated from CC-CEDICT data downloaded from
-MDBG and converted from Pinyin readings into Zhuyin keys. Default candidate
-ordering is informed by McBopomofo aggregate phrase-frequency data; this does
-not add McBopomofo entries or its underlying corpus. The relevant scripts are:
+The asset combines CC-CEDICT entries converted from Pinyin into Zhuyin keys
+with McBopomofo multi-character phrase readings. McBopomofo aggregate phrase
+frequency ranks the merged candidates; no underlying corpus is packaged. The
+relevant scripts are:
 
 - `tools/build_zhuyin_dictionary.py`
 - `tools/rank_zhuyin_dictionary.py`
+- `tools/merge_mcbopomofo_dictionary.py`
 
 See `NOTICE.md`, `tools/data/README.md`, and
 `app/src/main/assets/zhuyin_cedict_LICENSE.txt` for source and license
@@ -119,8 +120,8 @@ Unless explicitly documented in `NOTICE.md`, this repository does not contain
 third-party source code, proprietary dictionaries, visual assets, or other
 copyrighted materials.
 
-The bundled dictionary entries and readings come from CC-CEDICT. Default
-candidate ordering uses McBopomofo aggregate phrase-frequency data. Keyboard
+The bundled dictionary combines CC-CEDICT-derived entries with McBopomofo
+phrase readings and aggregate frequency data. Keyboard
 Bopomofo glyphs use a pinned subset of ToneOZ Pinyin WenKai. Sources,
 transformations, and licenses are documented in `NOTICE.md`.
 The subset covers U+3105-U+3129 and all five tone marks used by the keyboard,
@@ -133,9 +134,9 @@ Except where otherwise noted, this project's original source code is licensed
 under the [Apache License 2.0](LICENSE).
 
 The root Apache-2.0 license does not relicense third-party material. The
-generated dictionary derived from CC-CEDICT is subject to CC BY-SA 4.0, the
-McBopomofo aggregate phrase-frequency data used for candidate ordering is
-subject to the MIT License, and the ToneOZ font subset is subject to SIL Open
+generated data derived from CC-CEDICT is subject to CC BY-SA 4.0, the
+McBopomofo phrase readings and aggregate frequency data are subject to its MIT
+License and upstream data notices, and the ToneOZ font subset is subject to SIL Open
 Font License 1.1. See [NOTICE.md](NOTICE.md) and
 [NOTICE.zh-TW.md](NOTICE.zh-TW.md) for complete attribution, transformations,
 and local license copies.

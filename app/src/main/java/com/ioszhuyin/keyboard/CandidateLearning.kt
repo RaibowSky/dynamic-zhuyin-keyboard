@@ -67,12 +67,14 @@ internal object CandidateRanking {
     fun order(
         manualCandidates: List<String>,
         dictionaryCandidates: List<String>,
-        learnedCounts: Map<String, Int>
+        learnedCounts: Map<String, Int>,
+        learnedCandidates: List<String> = emptyList()
     ): List<String> {
         val manual = manualCandidates.distinct()
         val manualSet = manual.toSet()
-        val dictionary = dictionaryCandidates
-            .filter { it !in manualSet }
+        val dictionarySet = dictionaryCandidates.toSet()
+        val learned = learnedCandidates
+            .filter { it !in manualSet && it !in dictionarySet }
             .distinct()
             .withIndex()
             .sortedWith(
@@ -81,6 +83,17 @@ internal object CandidateRanking {
                 }.thenBy { it.index }
             )
             .map { it.value }
-        return manual + dictionary
+        val prioritizedSet = manualSet + learned
+        val dictionary = dictionaryCandidates
+            .filter { it !in prioritizedSet }
+            .distinct()
+            .withIndex()
+            .sortedWith(
+                compareBy<IndexedValue<String>> {
+                    it.index.toLong() - (learnedCounts[it.value] ?: 0).toLong()
+                }.thenBy { it.index }
+            )
+            .map { it.value }
+        return manual + learned + dictionary
     }
 }

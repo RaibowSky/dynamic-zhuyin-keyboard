@@ -265,6 +265,45 @@ class UserDictionaryStore(context: Context) :
         return result
     }
 
+    fun getLearnedCandidates(readings: List<String>): List<String> {
+        val selectedReadings = readings.filter { it.isNotBlank() }.distinct()
+        if (selectedReadings.isEmpty()) return emptyList()
+
+        data class Aggregate(val count: Long, val updatedAt: Long)
+
+        val placeholders = selectedReadings.joinToString(",") { "?" }
+        val aggregates = mutableMapOf<String, Aggregate>()
+        readableDatabase.query(
+            LEARNING_TABLE_NAME,
+            arrayOf(COL_WORD, COL_COUNT, COL_UPDATED_AT),
+            "$COL_READING IN ($placeholders)",
+            selectedReadings.toTypedArray(),
+            null,
+            null,
+            null
+        ).use { cursor ->
+            val wordIndex = cursor.getColumnIndexOrThrow(COL_WORD)
+            val countIndex = cursor.getColumnIndexOrThrow(COL_COUNT)
+            val updatedIndex = cursor.getColumnIndexOrThrow(COL_UPDATED_AT)
+            while (cursor.moveToNext()) {
+                val word = cursor.getString(wordIndex)
+                val previous = aggregates[word]
+                aggregates[word] = Aggregate(
+                    count = ((previous?.count ?: 0L) + cursor.getInt(countIndex))
+                        .coerceAtMost(Int.MAX_VALUE.toLong()),
+                    updatedAt = maxOf(previous?.updatedAt ?: 0L, cursor.getLong(updatedIndex))
+                )
+            }
+        }
+        return aggregates.entries
+            .sortedWith(
+                compareByDescending<Map.Entry<String, Aggregate>> { it.value.count }
+                    .thenByDescending { it.value.updatedAt }
+                    .thenBy { it.key }
+            )
+            .map { it.key }
+    }
+
     fun learningEntryCount(): Int =
         DatabaseUtils.queryNumEntries(readableDatabase, LEARNING_TABLE_NAME)
             .coerceAtMost(Int.MAX_VALUE.toLong())

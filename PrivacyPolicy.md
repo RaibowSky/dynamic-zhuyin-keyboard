@@ -1,6 +1,6 @@
 # Privacy Policy
 
-Last updated: 2026-07-15
+Last updated: 2026-07-17
 
 This policy applies to the Android input method "Dynamic Zhuyin Keyboard".
 
@@ -63,10 +63,11 @@ candidates, cloud sync, or crash reporting services.
 
 ## Dictionary Data
 
-The bundled candidate entries and readings are generated from CC-CEDICT.
-Their default order is informed by offline McBopomofo aggregate
-phrase-frequency data. These resources are processed locally without runtime
-network lookup. See `NOTICE.md` for source and license attribution.
+The bundled dictionary combines CC-CEDICT-derived entries and readings with
+McBopomofo multi-character phrase readings. Offline McBopomofo aggregate
+phrase-frequency data ranks the merged candidates. These resources are
+processed locally without runtime network lookup. See `NOTICE.md` for source
+and license attribution.
 
 ## Contact
 

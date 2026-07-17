@@ -18,7 +18,7 @@ The file `app/src/main/assets/zhuyin_cedict.tsv` is generated from CC-CEDICT.
   (CC BY-SA 4.0)
 - License URL: https://creativecommons.org/licenses/by-sa/4.0/
 - Local conversion script: `tools/build_zhuyin_dictionary.py`
-- Bundled asset SHA-256: `50f057aab946c7da7e22fbad1dd845c5d406894c8ce03100817c101e5b7c0ea4`
+- Bundled asset SHA-256: `78d4ed4b7bb695203e3a2c291921180f503e88498f31b705edb1e0ac80454aec`
 
 Transformation performed:
 
@@ -26,8 +26,8 @@ Transformation performed:
 - Convert Pinyin syllables into Zhuyin symbols and tone marks.
 - Generate keyed candidate rows in `key<TAB>candidate1 candidate2 ...` format.
 - Include both toned and untoned lookup keys for IME candidate lookup.
-- Rank candidates using the separately attributed McBopomofo aggregate
-  phrase-frequency data described below.
+- Merge the separately attributed McBopomofo phrase readings described below.
+- Rank merged candidates using McBopomofo aggregate phrase-frequency data.
 
 The generated file is a derived data asset and should continue to carry
 CC-CEDICT attribution and compatible license handling when redistributed.
@@ -46,16 +46,20 @@ baseline, the conversion script writes to `build/dictionary-rebuild/` by
 default. Replacing the bundled target requires explicit `--target` and
 `--license-file` paths and corresponding notice updates.
 
-### McBopomofo aggregate phrase-frequency data
+### McBopomofo phrase readings and aggregate frequency data
 
-`tools/data/mcbopomofo_phrase.occ` is a line-ending-normalized copy of
-McBopomofo's aggregate phrase-occurrence table. CRLF was normalized to LF; the
-phrase and count content is unchanged.
+`tools/data/mcbopomofo_bpmf_mappings.txt` is an unmodified copy of
+McBopomofo's multi-character phrase-to-Bopomofo table.
+`tools/data/mcbopomofo_phrase.occ` is a line-ending-normalized copy of its
+aggregate phrase-occurrence table.
 
 - Source project: McBopomofo
 - Repository: https://github.com/openvanilla/McBopomofo
-- Upstream file: https://github.com/openvanilla/McBopomofo/blob/14f672cd9296deb4ff87034b05003b15a1e796f5/Source/Data/phrase.occ
 - Pinned commit: `14f672cd9296deb4ff87034b05003b15a1e796f5`
+- Phrase-reading source: https://github.com/openvanilla/McBopomofo/blob/14f672cd9296deb4ff87034b05003b15a1e796f5/Source/Data/BPMFMappings.txt
+- Phrase-reading SHA-256: `51715ee5c731f9994be3b168d7681ed9692b8c335ae6fc2e7cfd4af6fd0e0781`
+- Phrase-reading source retrieved: 2026-07-17
+- Occurrence source: https://github.com/openvanilla/McBopomofo/blob/14f672cd9296deb4ff87034b05003b15a1e796f5/Source/Data/phrase.occ
 - Retrieved: 2026-07-11
 - Upstream SHA-256: `2140ccad6945fd972dc0004ad44d2b4ba6ad50dd91dd883f51b72951fd01ed4e`
 - LF-normalized SHA-256: `0fc51c5245a8820e1003e3fa3fb2759b0d1b502a71da81bbfa265e9ac6c9fb5a`
@@ -64,12 +68,12 @@ phrase and count content is unchanged.
 - Copyright: Copyright (c) 2011-2026 Mengjuei Hsieh et al.
 - Local license copy: `tools/data/McBopomofo_LICENSE.txt`
 
-The exact phrase counts are used only to reorder candidates already generated
-from CC-CEDICT. This process does not import McBopomofo dictionary entries,
-readings, application source code, or the corpus underlying the aggregate
-counts. The source frequency file is retained in this repository as a
-build-time input for reproducibility; it is not packaged as an Android runtime
-asset. The generated asset carries both projects' attribution in
+The phrase-reading mappings add McBopomofo's curated multi-character phrases
+under toned and untoned Zhuyin keys. Exact phrase counts rank the merged
+candidates. The upstream data README notes that `BPMFMappings.txt` was
+originally simplified from libtabe's BSD-licensed `tsi.src` and subsequently
+modified. No McBopomofo application source code, raw corpus, IVS data, or
+runtime source file is packaged. The generated asset carries attribution in
 `app/src/main/assets/zhuyin_cedict_LICENSE.txt`.
 
 ### ToneOZ Pinyin WenKai Bopomofo subset
@@ -111,9 +115,9 @@ data section above, this repository does not include third-party source code,
 proprietary dictionaries, visual assets, trademark assets, scraped datasets, or
 other copyrighted materials from those references.
 
-The bundled dictionary entries and readings are generated only from CC-CEDICT.
-Their default candidate order is informed by the separately attributed
-McBopomofo aggregate phrase-frequency data documented above.
+The bundled dictionary combines CC-CEDICT-derived entries with the separately
+attributed McBopomofo phrase readings and aggregate frequency data documented
+above.
 
 ## Repository Policy for Future Data
 

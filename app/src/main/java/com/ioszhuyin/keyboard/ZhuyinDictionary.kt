@@ -7,10 +7,11 @@ import java.nio.ByteBuffer
 import java.nio.channels.FileChannel
 
 /**
- * Zhuyin dictionary backed by a generated CC-CEDICT asset.
+ * Zhuyin dictionary backed by a generated CC-CEDICT and McBopomofo asset.
  *
- * Source data: CC-CEDICT, CC BY-SA 4.0.
+ * Source data: CC-CEDICT (CC BY-SA 4.0) and McBopomofo phrase data (MIT).
  * Generated asset: app/src/main/assets/zhuyin_cedict.tsv
+ * See NOTICE.md and app/src/main/assets/zhuyin_cedict_LICENSE.txt for details.
  */
 object ZhuyinDictionary {
 

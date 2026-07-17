@@ -81,12 +81,13 @@ app/build/outputs/apk/debug/app-debug.apk
 
 - `app/src/main/assets/zhuyin_cedict.tsv`
 
-這份檔案的詞條與讀音由 CC-CEDICT 資料轉換而來：先讀取 CC-CEDICT 的繁體詞條與拼音讀音，再由專案內的腳本轉成注音查詢鍵。預設候選順序另使用 McBopomofo 的彙總詞頻資料排列；不會因此加入 McBopomofo 的詞條或底層語料。
+這份檔案合併兩種已標示來源的資料：CC-CEDICT 的繁體詞條與拼音讀音會轉成注音查詢鍵；McBopomofo 的多字片語讀音會補充台灣常用詞，並使用其彙總詞頻排列候選。原始語料不會打包進 App。
 
 轉換腳本：
 
 - `tools/build_zhuyin_dictionary.py`
 - `tools/rank_zhuyin_dictionary.py`
+- `tools/merge_mcbopomofo_dictionary.py`
 
 資料來源與授權請看：
 
@@ -114,7 +115,7 @@ app/build/outputs/apk/debug/app-debug.apk
 
 除 `NOTICE.md` 明確列出的第三方資料外，本 repository 不包含任何第三方程式碼、專有詞庫、視覺素材或其他受版權保護內容。
 
-目前候選字典的詞條與讀音來自 CC-CEDICT；預設候選順序使用 McBopomofo 的彙總詞頻資料調整。鍵盤注音 glyph 使用 ToneOZ Pinyin WenKai 的固定版本 subset。來源、轉換方式與授權請參閱 `NOTICE.md`。
+目前候選字典合併 CC-CEDICT 衍生詞條與 McBopomofo 片語讀音，並使用 McBopomofo 彙總詞頻排序。鍵盤注音 glyph 使用 ToneOZ Pinyin WenKai 的固定版本 subset。來源、轉換方式與授權請參閱 `NOTICE.md`。
 
 該 subset 包含 U+3105-U+3129 與鍵盤使用的五個聲調符號（包含一聲 U+02C9），SHA-256 為 `7d2630c930012253c214100dae4fdccef582ed02be6bcbc313bed831ad672800`。
 
@@ -122,7 +123,7 @@ app/build/outputs/apk/debug/app-debug.apk
 
 除另有標示者外，本專案的原始程式碼採用 [Apache License 2.0](LICENSE)。
 
-根目錄的 Apache-2.0 不會重新授權第三方資料。由 CC-CEDICT 轉換而來的候選字典遵守 CC BY-SA 4.0；用於候選排序的 McBopomofo 彙總詞頻資料遵守 MIT License；ToneOZ 字型 subset 遵守 SIL Open Font License 1.1。完整來源、轉換方式與授權副本請見 [NOTICE.zh-TW.md](NOTICE.zh-TW.md) 與 [NOTICE.md](NOTICE.md)。
+根目錄的 Apache-2.0 不會重新授權第三方資料。由 CC-CEDICT 轉換而來的候選資料遵守 CC BY-SA 4.0；McBopomofo 片語讀音與彙總詞頻資料遵守其 MIT License 與上游資料聲明；ToneOZ 字型 subset 遵守 SIL Open Font License 1.1。完整來源、轉換方式與授權副本請見 [NOTICE.zh-TW.md](NOTICE.zh-TW.md) 與 [NOTICE.md](NOTICE.md)。
 
 ## 開發提醒
 

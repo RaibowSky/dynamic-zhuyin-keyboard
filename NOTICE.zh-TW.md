@@ -17,7 +17,7 @@
   (CC BY-SA 4.0)
 - 授權網址：https://creativecommons.org/licenses/by-sa/4.0/
 - 本地轉換腳本：`tools/build_zhuyin_dictionary.py`
-- 打包資產 SHA-256：`50f057aab946c7da7e22fbad1dd845c5d406894c8ce03100817c101e5b7c0ea4`
+- 打包資產 SHA-256：`78d4ed4b7bb695203e3a2c291921180f503e88498f31b705edb1e0ac80454aec`
 
 執行的轉換內容：
 
@@ -25,20 +25,24 @@
 - 將拼音音節轉換為注音符號與聲調標記。
 - 產生 `key<TAB>candidate1 candidate2 ...` 格式的候選字資料列。
 - 同時包含有聲調與無聲調的查詢鍵，以供輸入法候選字查詢使用。
-- 使用下方另行標示來源的 McBopomofo 彙總詞頻資料排列候選字順序。
+- 合併下方另行標示來源的 McBopomofo 片語與注音讀音。
+- 使用 McBopomofo 彙總詞頻資料排列合併後的候選字順序。
 
 產生出的檔案屬於衍生資料資產；重新散布時應持續保留 CC-CEDICT 的標示，並採用相容的授權處理方式。
 
 目前打包資產當初使用的 CC-CEDICT archive 並未保留，因此無法誠實標示其精確上游 release、來源 archive checksum，或逐 byte 重建。轉換腳本目前固定一份較新的重建基準：2026-07-15 從 MDBG 下載，SHA-256 為 `33d79ec1cc91fd1bc76fe7e590723d474cfe6ab364648eef9b7b52677e897d87`。該份已驗證的基準會產生不同的字典資產，不能視為目前 repository 內資產的來源快照。MDBG 下載網址會隨最新版變動；checksum 才是轉換腳本接受的重建輸入識別。為避免意外用不同基準覆寫目前資產，腳本預設輸出到 `build/dictionary-rebuild/`；若要替換打包資產，必須明確指定 `--target`、`--license-file`，並同步更新來源聲明。
 
-### McBopomofo 彙總詞頻資料
+### McBopomofo 片語讀音與彙總詞頻資料
 
-`tools/data/mcbopomofo_phrase.occ` 是 McBopomofo 彙總詞語出現次數表的換行正規化副本；只將 CRLF 改為 LF，詞語與次數內容不變。
+`tools/data/mcbopomofo_bpmf_mappings.txt` 是 McBopomofo 多字片語與注音讀音表的未修改副本；`tools/data/mcbopomofo_phrase.occ` 是彙總詞語出現次數表的換行正規化副本。
 
 - 來源專案：McBopomofo
 - Repository：https://github.com/openvanilla/McBopomofo
-- 上游檔案：https://github.com/openvanilla/McBopomofo/blob/14f672cd9296deb4ff87034b05003b15a1e796f5/Source/Data/phrase.occ
 - 固定 commit：`14f672cd9296deb4ff87034b05003b15a1e796f5`
+- 片語讀音來源：https://github.com/openvanilla/McBopomofo/blob/14f672cd9296deb4ff87034b05003b15a1e796f5/Source/Data/BPMFMappings.txt
+- 片語讀音 SHA-256：`51715ee5c731f9994be3b168d7681ed9692b8c335ae6fc2e7cfd4af6fd0e0781`
+- 片語讀音取得日期：2026-07-17
+- 詞頻來源：https://github.com/openvanilla/McBopomofo/blob/14f672cd9296deb4ff87034b05003b15a1e796f5/Source/Data/phrase.occ
 - 取得日期：2026-07-11
 - 上游 SHA-256：`2140ccad6945fd972dc0004ad44d2b4ba6ad50dd91dd883f51b72951fd01ed4e`
 - LF 正規化 SHA-256：`0fc51c5245a8820e1003e3fa3fb2759b0d1b502a71da81bbfa265e9ac6c9fb5a`
@@ -47,7 +51,7 @@
 - 著作權標示：Copyright (c) 2011-2026 Mengjuei Hsieh et al.
 - 本地授權副本：`tools/data/McBopomofo_LICENSE.txt`
 
-本專案只使用其中的詞語出現次數，重新排列已由 CC-CEDICT 產生的候選字；不會匯入 McBopomofo 的詞條、讀音、應用程式原始碼，或產生彙總次數所使用的底層語料。為了讓建置可重現，來源詞頻檔保留在 repository 中作為建置階段的輸入，但不會打包成 Android 執行階段資產。產生後的資產會在 `app/src/main/assets/zhuyin_cedict_LICENSE.txt` 同時保留兩個專案的來源與授權標示。
+本專案將片語讀音表轉成有聲調與無聲調的注音查詢鍵，與 CC-CEDICT 衍生候選去重合併，再使用彙總詞頻排序。上游資料說明指出 `BPMFMappings.txt` 最初由 BSD 授權的 libtabe `tsi.src` 簡化後持續修改。本專案不會打包 McBopomofo 應用程式原始碼、原始語料或 IVS 資料；產生後的資產會在 `app/src/main/assets/zhuyin_cedict_LICENSE.txt` 保留來源與授權標示。
 
 ### ToneOZ 拼音文楷注音 subset
 
@@ -77,7 +81,7 @@ subset 包含 U+3105-U+3129 與 U+02C7、U+02C9、U+02CA、U+02CB、U+02D9。字
 
 這些參考資料僅用於行為研究、設計比較與語言資料驗證。除前述「實際打包的第三方資料」明確列出的內容外，本 repository 不包含來自這些參考資料的第三方程式碼、專有詞庫、視覺素材、商標素材、爬取資料集或其他受版權保護內容。
 
-目前實際隨專案提供的候選字典，其詞條與讀音僅由 CC-CEDICT 產生；預設候選順序則使用前述另行標示來源的 McBopomofo 彙總詞頻資料調整。
+目前實際隨專案提供的候選字典，合併 CC-CEDICT 衍生詞條與前述另行標示來源的 McBopomofo 片語讀音及彙總詞頻資料。
 
 ## 未來新增資料的 repository 政策
 
