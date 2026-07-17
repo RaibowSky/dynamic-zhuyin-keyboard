@@ -3,7 +3,6 @@ package com.ioszhuyin.keyboard
 import android.content.Context
 import android.content.SharedPreferences
 import android.graphics.*
-import android.net.Uri
 import android.os.Build
 import android.util.AttributeSet
 import android.view.MotionEvent
@@ -38,15 +37,11 @@ class ZhuyinKeyboardView @JvmOverloads constructor(
 
     var bopomofoTypeface: Typeface = Typeface.create("sans-serif", Typeface.NORMAL)  // 預設值, 外部可覆寫
     private var metrics: KeyboardLayoutMetrics = KeyboardMetrics.current(context)
-    private var overlayBitmap: Bitmap? = null
-    private var loadedOverlayUri: String? = null
     private val metricsPrefs: SharedPreferences = KeyboardMetrics.prefs(context)
     private val metricsListener =
         SharedPreferences.OnSharedPreferenceChangeListener { _, key ->
             if (KeyboardMetrics.isKeyboardMetricKey(key)) {
                 metrics = KeyboardMetrics.current(context)
-                overlayBitmap = null
-                loadedOverlayUri = null
                 refresh()
             }
         }
@@ -750,45 +745,7 @@ class ZhuyinKeyboardView @JvmOverloads constructor(
         // === 聲調浮動面板 ===
         // iOS 26 風格: 聲調在 controlKeys 內, 不需要額外繪製
         // (toneRects 已清空)
-        drawDebugOverlay(canvas, bgTop, bgBottom)
     }
-
-    private fun drawDebugOverlay(canvas: Canvas, top: Float, bottom: Float) {
-        if (!isDebugBuild() || bottom <= top) return
-        val prefs = metricsPrefs
-        if (!prefs.getBoolean(KeyboardMetrics.KEY_OVERLAY_ENABLED, false)) return
-        val uriText = prefs.getString(KeyboardMetrics.KEY_OVERLAY_URI, null) ?: return
-        val alpha = prefs.getInt(KeyboardMetrics.KEY_OVERLAY_ALPHA, 40).coerceIn(0, 100)
-        if (alpha <= 0) return
-
-        val bitmap = overlayBitmap ?: loadOverlayBitmap(uriText) ?: return
-        val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-            this.alpha = (255 * alpha / 100f).toInt()
-        }
-        canvas.drawBitmap(
-            bitmap,
-            null,
-            RectF(0f, top.coerceAtLeast(0f), width.toFloat(), bottom.coerceAtMost(height.toFloat())),
-            paint
-        )
-    }
-
-    private fun loadOverlayBitmap(uriText: String): Bitmap? {
-        if (loadedOverlayUri == uriText && overlayBitmap != null) return overlayBitmap
-        return try {
-            context.contentResolver.openInputStream(Uri.parse(uriText))?.use { input ->
-                BitmapFactory.decodeStream(input)
-            }?.also { bitmap ->
-                loadedOverlayUri = uriText
-                overlayBitmap = bitmap
-            }
-        } catch (e: Exception) {
-            null
-        }
-    }
-
-    private fun isDebugBuild(): Boolean =
-        (context.applicationInfo.flags and android.content.pm.ApplicationInfo.FLAG_DEBUGGABLE) != 0
 
     private fun drawRoundRect(canvas: Canvas, r: RectF, color: Int, radius: Float) {
         paintRoundRect.color = color

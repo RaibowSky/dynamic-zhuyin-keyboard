@@ -33,6 +33,9 @@ object ZhuyinDictionary {
 
     fun getCandidates(key: String): List<String>? = dictionary?.getCandidates(key)
 
+    fun getPrefixCandidates(prefix: String, limit: Int): List<String> =
+        dictionary?.getPrefixCandidates(prefix, limit).orEmpty()
+
     fun getAllKeys(): Set<String>? = dictionary?.keys ?: emptySet()
 
     fun isLegalBaseSyllable(key: String): Boolean = key in metadata().legalBaseSyllables
@@ -119,6 +122,9 @@ internal class SortedTsvDictionary(source: ByteBuffer) {
     private val bytes: ByteBuffer = source.slice().asReadOnlyBuffer()
     private val byteCount: Int = bytes.limit()
     private val dataStart: Int = findDataStart()
+    private val lengthRanges: List<LengthRange> by lazy(LazyThreadSafetyMode.PUBLICATION) {
+        buildLengthRanges()
+    }
 
     val keys: Set<String> = object : AbstractSet<String>() {
         override val size: Int by lazy(LazyThreadSafetyMode.PUBLICATION) {
@@ -133,14 +139,72 @@ internal class SortedTsvDictionary(source: ByteBuffer) {
     fun getCandidates(key: String): List<String>? {
         if (key.isEmpty()) return null
         val line = findLine(key) ?: return null
-        val tab = findTab(line.start, line.end)
-        if (tab <= line.start || tab >= line.end - 1) return null
+        return candidatesInLine(line.start, line.end).takeIf { it.isNotEmpty() }
+    }
 
-        val candidates = decode(tab + 1, contentEnd(line.start, line.end))
-            .split(' ')
-            .filter { it.isNotBlank() }
-            .distinct()
-        return candidates.takeIf { it.isNotEmpty() }
+    /**
+     * Returns a bounded set of candidates whose readings begin with [prefix].
+     *
+     * The TSV is grouped by code-point length, so a tiny byte-range index plus a
+     * binary search per length avoids scanning or retaining the whole dictionary.
+     */
+    fun getPrefixCandidates(prefix: String, limit: Int): List<String> {
+        if (prefix.isEmpty() || limit <= 0) return emptyList()
+
+        val prefixLength = prefix.codePointCount(0, prefix.length)
+        val scores = linkedMapOf<String, PrefixCandidateScore>()
+        var matchingRows = 0
+        var firstSeen = 0
+
+        for (range in lengthRanges) {
+            if (range.codePointLength < prefixLength) continue
+            var start = findFirstPrefixLine(prefix, range) ?: continue
+            while (start < range.endExclusive && matchingRows < MAX_PREFIX_MATCHING_ROWS) {
+                val end = findLineEnd(start)
+                val tab = findTab(start, end)
+                if (tab <= start) break
+                val key = decode(start, tab)
+                if (!key.startsWith(prefix)) break
+
+                candidatesInLine(start, end)
+                    .take(MAX_PREFIX_CANDIDATES_PER_ROW)
+                    .forEachIndexed { rank, candidate ->
+                        val score = scores.getOrPut(candidate) {
+                            PrefixCandidateScore(
+                                shortestReadingLength = range.codePointLength,
+                                bestRank = rank,
+                                firstSeen = firstSeen++
+                            )
+                        }
+                        score.appearances++
+                        score.shortestReadingLength = minOf(
+                            score.shortestReadingLength,
+                            range.codePointLength
+                        )
+                        score.bestRank = minOf(score.bestRank, rank)
+                    }
+                matchingRows++
+                start = nextLineStart(end)
+            }
+            if (matchingRows >= MAX_PREFIX_MATCHING_ROWS) break
+        }
+
+        return scores.entries
+            .sortedWith(
+                compareBy<Map.Entry<String, PrefixCandidateScore>> {
+                    it.value.shortestReadingLength
+                }.thenByDescending {
+                    it.value.appearances
+                }.thenBy {
+                    it.value.bestRank
+                }.thenBy {
+                    it.value.firstSeen
+                }
+            )
+            .asSequence()
+            .map { it.key }
+            .take(limit)
+            .toList()
     }
 
     fun keySequence(): Sequence<String> = sequence {
@@ -172,6 +236,63 @@ internal class SortedTsvDictionary(source: ByteBuffer) {
             }
         }
         return null
+    }
+
+    private fun buildLengthRanges(): List<LengthRange> {
+        val result = mutableListOf<LengthRange>()
+        var rangeStart = dataStart
+        var currentLength = -1
+        var start = dataStart
+        while (start < byteCount) {
+            val end = findLineEnd(start)
+            val tab = findTab(start, end)
+            if (tab > start) {
+                val key = decode(start, tab)
+                val keyLength = key.codePointCount(0, key.length)
+                if (currentLength < 0) {
+                    currentLength = keyLength
+                    rangeStart = start
+                } else if (keyLength != currentLength) {
+                    result.add(LengthRange(currentLength, rangeStart, start))
+                    currentLength = keyLength
+                    rangeStart = start
+                }
+            }
+            start = nextLineStart(end)
+        }
+        if (currentLength >= 0) {
+            result.add(LengthRange(currentLength, rangeStart, byteCount))
+        }
+        return result
+    }
+
+    private fun findFirstPrefixLine(prefix: String, range: LengthRange): Int? {
+        var low = range.start
+        var high = range.endExclusive
+        while (low < high) {
+            val middle = low + (high - low) / 2
+            val lineStart = findLineStart(middle, low)
+            val lineEnd = findLineEnd(lineStart)
+            val tab = findTab(lineStart, lineEnd)
+            if (tab <= lineStart) return null
+
+            val key = decode(lineStart, tab)
+            if (compareKeyToPrefix(key, prefix) < 0) {
+                low = nextLineStart(lineEnd)
+            } else {
+                high = lineStart
+            }
+        }
+        return low.takeIf { it < range.endExclusive }
+    }
+
+    private fun candidatesInLine(start: Int, end: Int): List<String> {
+        val tab = findTab(start, end)
+        if (tab <= start || tab >= end - 1) return emptyList()
+        return decode(tab + 1, contentEnd(start, end))
+            .split(' ')
+            .filter { it.isNotBlank() }
+            .distinct()
     }
 
     private fun findDataStart(): Int {
@@ -243,12 +364,42 @@ internal class SortedTsvDictionary(source: ByteBuffer) {
 
     private data class LineBounds(val start: Int, val end: Int)
 
+    private data class LengthRange(
+        val codePointLength: Int,
+        val start: Int,
+        val endExclusive: Int
+    )
+
+    private data class PrefixCandidateScore(
+        var shortestReadingLength: Int,
+        var bestRank: Int,
+        val firstSeen: Int,
+        var appearances: Int = 0
+    )
+
     companion object {
         private const val COMMENT = '#'.code
         private const val SPACE = ' '.code
         private const val TAB = '\t'.code
         private const val CARRIAGE_RETURN = '\r'.code
         private const val LINE_FEED = '\n'.code
+        private const val MAX_PREFIX_MATCHING_ROWS = 64
+        private const val MAX_PREFIX_CANDIDATES_PER_ROW = 4
+
+        private fun compareKeyToPrefix(key: String, prefix: String): Int {
+            var keyIndex = 0
+            var prefixIndex = 0
+            while (keyIndex < key.length && prefixIndex < prefix.length) {
+                val keyCodePoint = key.codePointAt(keyIndex)
+                val prefixCodePoint = prefix.codePointAt(prefixIndex)
+                if (keyCodePoint != prefixCodePoint) {
+                    return keyCodePoint.compareTo(prefixCodePoint)
+                }
+                keyIndex += Character.charCount(keyCodePoint)
+                prefixIndex += Character.charCount(prefixCodePoint)
+            }
+            return if (prefixIndex == prefix.length) 0 else -1
+        }
 
         internal fun compareKeys(left: String, right: String): Int {
             val lengthComparison = left.codePointCount(0, left.length)

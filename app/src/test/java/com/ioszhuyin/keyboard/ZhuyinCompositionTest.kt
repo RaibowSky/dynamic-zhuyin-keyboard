@@ -101,6 +101,7 @@ class ZhuyinCompositionTest {
             preferredPrefixCandidatesForReading = { reading ->
                 if (reading == "ㄋㄧˇㄐㄧㄚˉ") listOf("你家") else emptyList()
             },
+            prefixCandidatesForReading = { listOf("你家人") },
             candidatesForReading = { reading ->
                 when (reading) {
                     "ㄋㄧˇㄐㄧㄚˉ" -> listOf("你家")
@@ -116,6 +117,59 @@ class ZhuyinCompositionTest {
         assertEquals("ㄋㄧˇㄐㄧㄚˉ", match?.reading)
         assertEquals(listOf("你家"), match?.candidates)
         assertEquals("ㄖㄣˊ", raw.substring(match?.end ?: 0))
+    }
+
+    @Test
+    fun incompleteReadingUsesProvisionalPrefixCandidates() {
+        val raw = "ㄋ"
+        val segments = ZhuyinComposition.splitSegments(raw) { false }
+
+        val match = ZhuyinComposition.resolveLeadingCandidates(
+            raw = raw,
+            segments = segments,
+            prefixCandidatesForReading = { listOf("那", "你") },
+            candidatesForReading = { emptyList() }
+        )
+
+        assertEquals(listOf("那", "你"), match?.candidates)
+        assertEquals(raw.length, match?.end)
+        assertEquals(true, match?.isProvisional)
+    }
+
+    @Test
+    fun exactCandidatesStillOutrankPrefixCandidates() {
+        val raw = "ㄋㄧ"
+        val segments = ZhuyinComposition.splitSegments(raw) { it == raw }
+
+        val match = ZhuyinComposition.resolveLeadingCandidates(
+            raw = raw,
+            segments = segments,
+            prefixCandidatesForReading = { listOf("泥巴") },
+            candidatesForReading = { reading ->
+                if (reading == raw) listOf("你", "呢") else emptyList()
+            }
+        )
+
+        assertEquals(listOf("你", "呢"), match?.candidates)
+        assertEquals(false, match?.isProvisional)
+    }
+
+    @Test
+    fun phrasePrefixPrefersCandidateMatchingCompletedLeadingSyllable() {
+        val raw = "ㄋㄧˇㄏ"
+        val segments = ZhuyinComposition.splitSegments(raw) { it == "ㄋㄧ" }
+
+        val match = ZhuyinComposition.resolveLeadingCandidates(
+            raw = raw,
+            segments = segments,
+            prefixCandidatesForReading = { listOf("擬合", "你好") },
+            candidatesForReading = { reading ->
+                if (reading == "ㄋㄧˇ") listOf("你", "妳", "擬") else emptyList()
+            }
+        )
+
+        assertEquals(listOf("你好", "擬合"), match?.candidates)
+        assertEquals(true, match?.isProvisional)
     }
 
     @Test

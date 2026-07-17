@@ -91,6 +91,29 @@ class SortedTsvDictionaryTest {
     }
 
     @Test
+    fun prefixLookupIsBoundedDeduplicatedAndPrefersShorterReadings() {
+        val reader = readerOf(
+            "ㄋㄚ" to "那 南",
+            "ㄋㄚˋ" to "那",
+            "ㄋㄧ" to "你 呢",
+            "ㄋㄧˇ" to "你 妳",
+            "ㄋㄧˇㄏㄜˊ" to "擬合",
+            "ㄋㄧˇㄏㄠˇ" to "你好"
+        )
+
+        assertEquals(
+            listOf("那", "你", "南", "呢", "妳"),
+            reader.getPrefixCandidates("ㄋ", limit = 5)
+        )
+        assertEquals(
+            listOf("擬合", "你好"),
+            reader.getPrefixCandidates("ㄋㄧˇㄏ", limit = 9)
+        )
+        assertEquals(emptyList<String>(), reader.getPrefixCandidates("ㄇ", limit = 9))
+        assertEquals(emptyList<String>(), reader.getPrefixCandidates("ㄋ", limit = 0))
+    }
+
+    @Test
     fun binarySearchHandlesThousandsOfVariableLengthRows() {
         val entries = (0 until 2_048).map { index ->
             val key = "ㄅ".repeat(index % 5 + 1) + index.toString().padStart(4, '0')

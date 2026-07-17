@@ -224,7 +224,7 @@ object KeyboardMetrics {
     }
 
     fun isKeyboardMetricKey(key: String?): Boolean =
-        key != null && (key.startsWith("keyboard_metric_") || key.startsWith("keyboard_debug_"))
+        key != null && key.startsWith("keyboard_metric_")
 
     const val PREFS_NAME = "keyboard_metrics"
     const val KEY_PRESET = "keyboard_metric_preset"
@@ -265,7 +265,4 @@ object KeyboardMetrics {
     const val KEY_TONE_KEY_STEP = "keyboard_metric_tone_key_step"
     const val KEY_TONE_KEY_WIDTH = "keyboard_metric_tone_key_width"
     const val KEY_TONE_BACKSPACE_SLOT = "keyboard_metric_tone_backspace_slot"
-    const val KEY_OVERLAY_ENABLED = "keyboard_debug_overlay_enabled"
-    const val KEY_OVERLAY_ALPHA = "keyboard_debug_overlay_alpha"
-    const val KEY_OVERLAY_URI = "keyboard_debug_overlay_uri"
 }

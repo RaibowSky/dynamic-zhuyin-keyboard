@@ -27,9 +27,53 @@
 - 改善注音 composing text、候選列與輸入可靠性。
 - 完成本機使用者詞典的暫停學習、清除、重設、匯入與匯出流程。
 - 改善大型詞典處理、transaction 安全性與建置驗證。
+- 實作每輸入一個注音符號即更新候選、連續組句與片語候選保底。
+- 修正密碼、網址、搜尋與一般文字欄位的輸入模式判斷。
+- 以單元測試、模擬 `InputConnection`、Android 模擬器與實機反覆驗證輸入行為。
 - 保留活動期間的 commit 與工作紀錄，區分活動前 baseline 與活動期間新增成果。
 
 所有模型產生的修改都會經過人工檢查、實際建置與裝置測試後才接受。更完整的英文說明請看 [README.en.md](README.en.md#openai-build-week-codex-and-gpt-56)。
+
+## 建置與安裝
+
+需求：
+
+- JDK 17
+- Android SDK 36.1
+- Android Build Tools 36.1.0
+- Android 7.0（API 24）以上的裝置或模擬器
+
+在 Windows PowerShell 執行：
+
+```powershell
+.\gradlew.bat testDebugUnitTest lintDebug assembleDebug
+```
+
+產生的 APK 位於：
+
+```text
+app/build/outputs/apk/debug/app-debug.apk
+```
+
+也可以連接已開啟 USB 偵錯的 Android 裝置後直接安裝：
+
+```powershell
+.\gradlew.bat installDebug
+```
+
+安裝後開啟「動態注音鍵盤」應用程式：
+
+1. 點選「啟用鍵盤」，在 Android 輸入法設定中啟用「動態注音鍵盤」。
+2. 返回應用程式並點選「切換鍵盤」，選擇「動態注音鍵盤」。
+3. 在任意文字欄位輸入注音；候選列會隨每個注音符號更新。
+
+## 評審快速測試
+
+- 連續輸入多個注音音節，觀察動態候選、片語候選與逐音節組句保底。
+- 選取不同候選後再次輸入相同讀音，確認本機候選學習會調整排序。
+- 開啟主應用程式，測試暫停／清除學習、手動詞彙及字典匯入／匯出。
+- 在密碼欄確認鍵盤固定使用英文且不學習；在 Chrome 網址列確認仍可輸入中文搜尋。
+- 本專案不宣告網路權限，所有輸入與候選學習都在裝置本機完成。
 
 ## 字典資料
 
@@ -77,9 +121,9 @@
 
 ## 授權狀態
 
-目前本專案原始碼尚未另外指定開源授權；除非之後加入 `LICENSE` 檔案，否則專案擁有者保留所有權利。
+除另有標示者外，本專案的原始程式碼採用 [Apache License 2.0](LICENSE)。
 
-第三方資料仍依各自授權條款使用。由 CC-CEDICT 轉換而來的候選字典遵守 CC BY-SA 4.0；用於候選排序的 McBopomofo 彙總詞頻資料遵守 MIT License；ToneOZ 字型 subset 遵守 SIL Open Font License 1.1。完整標示請見 `NOTICE.md`。
+根目錄的 Apache-2.0 不會重新授權第三方資料。由 CC-CEDICT 轉換而來的候選字典遵守 CC BY-SA 4.0；用於候選排序的 McBopomofo 彙總詞頻資料遵守 MIT License；ToneOZ 字型 subset 遵守 SIL Open Font License 1.1。完整來源、轉換方式與授權副本請見 [NOTICE.zh-TW.md](NOTICE.zh-TW.md) 與 [NOTICE.md](NOTICE.md)。
 
 ## 開發提醒
 

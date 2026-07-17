@@ -11,7 +11,8 @@ internal data class CandidateMatch(
     val reading: String,
     val candidates: List<String>,
     val start: Int,
-    val end: Int
+    val end: Int,
+    val isProvisional: Boolean = false
 )
 
 internal object ZhuyinComposition {
@@ -65,6 +66,7 @@ internal object ZhuyinComposition {
         raw: String,
         segments: List<ZhuyinSegment>,
         preferredPrefixCandidatesForReading: (String) -> List<String> = { emptyList() },
+        prefixCandidatesForReading: (String) -> List<String> = { emptyList() },
         candidatesForReading: (String) -> List<String>
     ): CandidateMatch? {
         if (raw.isEmpty()) return null
@@ -121,6 +123,24 @@ internal object ZhuyinComposition {
             )
         }
 
+        if (segments.any { !it.hasTone }) {
+            val prefixCandidates = prioritizePrefixCandidates(
+                candidates = prefixCandidatesForReading(raw),
+                raw = raw,
+                segments = segments,
+                candidatesForReading = candidatesForReading
+            )
+            if (prefixCandidates.isNotEmpty()) {
+                return CandidateMatch(
+                    reading = raw,
+                    candidates = prefixCandidates,
+                    start = 0,
+                    end = raw.length,
+                    isProvisional = true
+                )
+            }
+        }
+
         for (end in candidateEnds.filter { it < raw.length }) {
             val reading = raw.substring(0, end)
             val candidates = candidatesForReading(reading)
@@ -134,6 +154,31 @@ internal object ZhuyinComposition {
             }
         }
         return null
+    }
+
+    private fun prioritizePrefixCandidates(
+        candidates: List<String>,
+        raw: String,
+        segments: List<ZhuyinSegment>,
+        candidatesForReading: (String) -> List<String>
+    ): List<String> {
+        if (candidates.size < 2) return candidates
+        val leadingSegment = segments.firstOrNull {
+            it.start == 0 && it.end < raw.length
+        } ?: return candidates
+        val leadingChoices = candidatesForReading(leadingSegment.text)
+            .filter(::isSingleCodePoint)
+        if (leadingChoices.isEmpty()) return candidates
+
+        return candidates.withIndex()
+            .sortedWith(
+                compareBy<IndexedValue<String>> { indexed ->
+                    leadingChoices.indexOfFirst(indexed.value::startsWith)
+                        .takeIf { it >= 0 }
+                        ?: Int.MAX_VALUE
+                }.thenBy { it.index }
+            )
+            .map { it.value }
     }
 
     private fun composeSyllableCandidates(

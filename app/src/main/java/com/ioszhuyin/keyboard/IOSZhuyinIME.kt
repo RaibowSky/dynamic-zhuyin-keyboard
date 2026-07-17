@@ -27,6 +27,7 @@ class IOSZhuyinIME : InputMethodService() {
     private var candidatesExpanded: Boolean = false
     private var activeSegmentStart: Int = 0
     private var activeSegmentEnd: Int = 0
+    private var activeCandidatesProvisional: Boolean = false
     private var showFinalPage: Boolean = false
 
     private var personalizationAllowed = false
@@ -85,6 +86,9 @@ class IOSZhuyinIME : InputMethodService() {
         }
         return merged
     }
+
+    private fun prefixCandidatesForKey(raw: String): List<String> =
+        ZhuyinDictionary.getPrefixCandidates(raw, PREFIX_CANDIDATE_LIMIT)
 
     private val mainHandler = Handler(Looper.getMainLooper())
     private val backspaceRepeater = BackspaceRepeater(
@@ -216,6 +220,7 @@ class IOSZhuyinIME : InputMethodService() {
             candidatesExpanded = false
             activeSegmentStart = 0
             activeSegmentEnd = 0
+            activeCandidatesProvisional = false
             val editorAccepted = !syncEditorComposition ||
                 syncEditorComposing(clearEmptyComposition = clearEmptyEditorComposition)
             syncKeyboardView()
@@ -226,11 +231,13 @@ class IOSZhuyinIME : InputMethodService() {
             raw = raw,
             segments = splitSegments(raw),
             preferredPrefixCandidatesForReading = ::userCandidatesForKey,
+            prefixCandidatesForReading = ::prefixCandidatesForKey,
             candidatesForReading = ::getSortedCandidates
         )
         allCandidates = match?.candidates.orEmpty()
         activeSegmentStart = match?.start ?: 0
         activeSegmentEnd = match?.end ?: raw.length
+        activeCandidatesProvisional = match?.isProvisional == true
 
         selectedCandidateIndex = when {
             allCandidates.isEmpty() -> -1
@@ -543,7 +550,9 @@ class IOSZhuyinIME : InputMethodService() {
                 } else {
                     // A synchronous callback already supplied the current bounds.
                 }
-                if (recordLearning) wordSelected(edit.reading, edit.committedText)
+                if (recordLearning && !activeCandidatesProvisional) {
+                    wordSelected(edit.reading, edit.committedText)
+                }
                 recomputePageFromComposing()
                 refreshCandidates(
                     resetSelection = true,
@@ -558,7 +567,9 @@ class IOSZhuyinIME : InputMethodService() {
                     editorSelectionStart = cursor
                     editorSelectionEnd = cursor
                 }
-                if (recordLearning) wordSelected(edit.reading, edit.committedText)
+                if (recordLearning && !activeCandidatesProvisional) {
+                    wordSelected(edit.reading, edit.committedText)
+                }
                 resetToInitial()
                 if (provideFeedback) vibrateLight()
                 CandidateCommitResult.SUCCESS
@@ -810,7 +821,7 @@ class IOSZhuyinIME : InputMethodService() {
         while (composingText.isNotEmpty()) {
             if (editorCompositionPending && !syncEditorComposing()) return false
             val previousLength = composingText.length
-            if (allCandidates.isNotEmpty()) {
+            if (allCandidates.isNotEmpty() && !activeCandidatesProvisional) {
                 when (
                     commitSelectedCandidate(
                         provideFeedback = false,
@@ -861,6 +872,7 @@ class IOSZhuyinIME : InputMethodService() {
         candidatesExpanded = false
         activeSegmentStart = 0
         activeSegmentEnd = 0
+        activeCandidatesProvisional = false
         showFinalPage = false
         syncKeyboardView()
     }
@@ -1119,6 +1131,7 @@ class IOSZhuyinIME : InputMethodService() {
     companion object {
         private const val TAG = "IOSZhuyinIME"
         private const val MAX_BACKSPACE_CONTEXT = 64
+        private const val PREFIX_CANDIDATE_LIMIT = 18
         private const val FIRST_TONE = "ˉ"
         private const val NEUTRAL_TONE = "˙"
         private val TONE_CHARS = setOf('ˉ', '˙', 'ˊ', 'ˇ', 'ˋ')

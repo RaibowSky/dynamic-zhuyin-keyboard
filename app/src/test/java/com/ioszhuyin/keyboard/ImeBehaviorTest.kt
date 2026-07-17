@@ -176,7 +176,7 @@ class ImeBehaviorTest {
     }
 
     @Test
-    fun emailAndUriEditorsSelectEnglishMode() {
+    fun emailEditorsSelectEnglishModeWhileUriEditorsAllowZhuyinSearch() {
         val email =
             InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_EMAIL_ADDRESS
         val webEmail =
@@ -185,7 +185,15 @@ class ImeBehaviorTest {
 
         assertEquals(EditorKeyboardMode.ENGLISH, ImeBehavior.keyboardMode(email))
         assertEquals(EditorKeyboardMode.ENGLISH, ImeBehavior.keyboardMode(webEmail))
-        assertEquals(EditorKeyboardMode.ENGLISH, ImeBehavior.keyboardMode(uri))
+        assertEquals(EditorKeyboardMode.ZHUYIN, ImeBehavior.keyboardMode(uri))
+        assertEquals(
+            EditorKeyboardMode.ZHUYIN,
+            ImeBehavior.keyboardMode(uri, EditorInfo.IME_ACTION_SEARCH)
+        )
+        assertEquals(
+            EditorKeyboardMode.ENGLISH,
+            ImeBehavior.keyboardMode(uri, EditorInfo.IME_FLAG_FORCE_ASCII)
+        )
     }
 
     @Test

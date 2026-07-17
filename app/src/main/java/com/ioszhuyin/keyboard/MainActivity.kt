@@ -106,7 +106,6 @@ class MainActivity : AppCompatActivity() {
             REQUEST_IMPORT -> importDictionary(uri)
             REQUEST_EXPORT_DICTIONARY -> exportDictionary(uri, includeLearning = false)
             REQUEST_EXPORT_WITH_LEARNING -> exportDictionary(uri, includeLearning = true)
-            REQUEST_OVERLAY -> setOverlayImage(uri, data)
         }
     }
 
@@ -569,66 +568,38 @@ class MainActivity : AppCompatActivity() {
             "使用者字典：$totalEntries 筆"
         }
 
-    private fun setOverlayImage(uri: Uri, data: Intent?) {
-        runCatching {
-            val readFlag = (data?.flags ?: 0) and Intent.FLAG_GRANT_READ_URI_PERMISSION
-            if (readFlag != 0) {
-                contentResolver.takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION)
-            }
-            KeyboardMetrics.prefs(this).edit()
-                .putString(KeyboardMetrics.KEY_OVERLAY_URI, uri.toString())
-                .putBoolean(KeyboardMetrics.KEY_OVERLAY_ENABLED, true)
-                .apply()
-        }.onSuccess {
-            toast("已設定 Overlay 圖片")
-        }.onFailure {
-            toast(it.message ?: "Overlay 圖片設定失敗")
-        }
-    }
-
     private fun searchInputOrEmpty(): String =
         if (::searchInput.isInitialized) searchInput.text.toString() else ""
 
     private fun debugMetricsPanel(): LinearLayout {
-        val prefs = KeyboardMetrics.prefs(this)
         return LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             setPadding(0, dp(12), 0, dp(8))
-            addView(sectionTitle("Debug Overlay / Metrics"))
+            addView(sectionTitle("鍵盤版面調整"))
 
             val presetRow = row()
-            presetRow.addView(button("PixelPreset", 0xFF475569.toInt()) {
+            presetRow.addView(button("Pixel 預設", 0xFF475569.toInt()) {
                 KeyboardMetrics.applyPreset(this@MainActivity, KeyboardMetrics.PRESET_PIXEL)
-                toast("已套用 PixelPreset")
+                toast("已套用 Pixel 預設")
             }, rowWeight())
-            presetRow.addView(button("IOSPreset", 0xFF334155.toInt()) {
+            presetRow.addView(button("iOS 預設", 0xFF334155.toInt()) {
                 KeyboardMetrics.applyPreset(this@MainActivity, KeyboardMetrics.PRESET_IOS)
-                toast("已套用 IOSPreset")
+                toast("已套用 iOS 預設")
             }, rowWeight())
             addView(presetRow)
 
-            val overlayRow = row()
-            overlayRow.addView(button("選 Overlay", 0xFF0F766E.toInt()) { openOverlayImage() }, rowWeight())
-            overlayRow.addView(button("Overlay 開關", 0xFF64748B.toInt()) {
-                val enabled = !prefs.getBoolean(KeyboardMetrics.KEY_OVERLAY_ENABLED, false)
-                prefs.edit().putBoolean(KeyboardMetrics.KEY_OVERLAY_ENABLED, enabled).apply()
-                toast(if (enabled) "Overlay 已開啟" else "Overlay 已關閉")
-            }, rowWeight())
-            addView(overlayRow)
-
-            addView(alphaSlider())
-            addView(metricSlider("keyHeight", KeyboardMetrics.KEY_KEY_HEIGHT, 34f, 70f))
-            addView(metricSlider("horizontalGap", KeyboardMetrics.KEY_HORIZONTAL_GAP, 0f, 14f))
-            addView(metricSlider("verticalGap", KeyboardMetrics.KEY_VERTICAL_GAP, 0f, 14f))
-            addView(metricSlider("rowOffset1", KeyboardMetrics.KEY_ROW_OFFSET_1, 0f, 2f))
-            addView(metricSlider("rowOffset2", KeyboardMetrics.KEY_ROW_OFFSET_2, 0f, 2f))
-            addView(metricSlider("rowOffset3", KeyboardMetrics.KEY_ROW_OFFSET_3, 0f, 2f))
-            addView(metricSlider("keyboardPadding", KeyboardMetrics.KEY_HORIZONTAL_PADDING, 0f, 20f))
-            addView(metricSlider("keyboardTopPadding", KeyboardMetrics.KEY_TOP_PADDING, 0f, 30f))
-            addView(metricSlider("keyboardBottomPadding", KeyboardMetrics.KEY_BOTTOM_PADDING, 0f, 30f))
-            addView(metricSlider("functionKeyWidth", KeyboardMetrics.KEY_FUNCTION_KEY_WIDTH, 0.7f, 2.4f))
-            addView(metricSlider("spacebarRatio", KeyboardMetrics.KEY_SPACEBAR_RATIO, 2.5f, 7f))
-            addView(metricSlider("candidateBarHeight", KeyboardMetrics.KEY_CANDIDATE_BAR_HEIGHT, 24f, 64f))
+            addView(metricSlider("按鍵高度", KeyboardMetrics.KEY_KEY_HEIGHT, 34f, 70f))
+            addView(metricSlider("水平間距", KeyboardMetrics.KEY_HORIZONTAL_GAP, 0f, 14f))
+            addView(metricSlider("垂直間距", KeyboardMetrics.KEY_VERTICAL_GAP, 0f, 14f))
+            addView(metricSlider("第一排偏移", KeyboardMetrics.KEY_ROW_OFFSET_1, 0f, 2f))
+            addView(metricSlider("第二排偏移", KeyboardMetrics.KEY_ROW_OFFSET_2, 0f, 2f))
+            addView(metricSlider("第三排偏移", KeyboardMetrics.KEY_ROW_OFFSET_3, 0f, 2f))
+            addView(metricSlider("左右內距", KeyboardMetrics.KEY_HORIZONTAL_PADDING, 0f, 20f))
+            addView(metricSlider("上方內距", KeyboardMetrics.KEY_TOP_PADDING, 0f, 30f))
+            addView(metricSlider("下方內距", KeyboardMetrics.KEY_BOTTOM_PADDING, 0f, 30f))
+            addView(metricSlider("功能鍵寬度", KeyboardMetrics.KEY_FUNCTION_KEY_WIDTH, 0.7f, 2.4f))
+            addView(metricSlider("空白鍵寬度比例", KeyboardMetrics.KEY_SPACEBAR_RATIO, 2.5f, 7f))
+            addView(metricSlider("候選列高度", KeyboardMetrics.KEY_CANDIDATE_BAR_HEIGHT, 24f, 64f))
         }
     }
 
@@ -639,28 +610,6 @@ class MainActivity : AppCompatActivity() {
             setTextColor(0xFF1F2937.toInt())
             setPadding(0, dp(10), 0, dp(8))
         }
-
-    private fun alphaSlider(): LinearLayout {
-        val prefs = KeyboardMetrics.prefs(this)
-        val label = TextView(this).apply {
-            setTextColor(0xFF374151.toInt())
-            textSize = 13f
-        }
-        val seek = SeekBar(this).apply {
-            max = 100
-            progress = prefs.getInt(KeyboardMetrics.KEY_OVERLAY_ALPHA, 40)
-            setOnSeekBarChangeListener(simpleSeekBarListener { value ->
-                prefs.edit().putInt(KeyboardMetrics.KEY_OVERLAY_ALPHA, value).apply()
-                label.text = "overlayAlpha: $value%"
-            })
-        }
-        label.text = "overlayAlpha: ${seek.progress}%"
-        return LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            addView(label)
-            addView(seek)
-        }
-    }
 
     private fun metricSlider(labelText: String, key: String, min: Float, max: Float): LinearLayout {
         val prefs = KeyboardMetrics.prefs(this)
@@ -715,16 +664,6 @@ class MainActivity : AppCompatActivity() {
 
     private fun formatMetric(value: Float): String =
         String.format(java.util.Locale.US, "%.1f", value)
-
-    private fun openOverlayImage() {
-        val intent = Intent(Intent.ACTION_OPEN_DOCUMENT).apply {
-            addCategory(Intent.CATEGORY_OPENABLE)
-            type = "image/*"
-            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-            addFlags(Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION)
-        }
-        startActivityForResult(intent, REQUEST_OVERLAY)
-    }
 
     private fun zhuyinPad(): LinearLayout =
         LinearLayout(this).apply {
@@ -840,7 +779,6 @@ class MainActivity : AppCompatActivity() {
     companion object {
         private const val REQUEST_IMPORT = 1001
         private const val REQUEST_EXPORT_DICTIONARY = 1002
-        private const val REQUEST_OVERLAY = 1003
         private const val REQUEST_EXPORT_WITH_LEARNING = 1004
         private const val SLIDER_SCALE = 10f
         private const val MAX_VISIBLE_ENTRIES = 500
