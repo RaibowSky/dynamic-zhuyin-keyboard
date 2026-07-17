@@ -52,7 +52,14 @@ class ZhuyinKeyboardView @JvmOverloads constructor(
     // ============================================================
     // 鍵盤模式 (zhuyin / english / number / symbol)
     // ============================================================
-    enum class Mode { ZHUYIN, ENGLISH, NUMBER, SYMBOL }
+    enum class Mode {
+        ZHUYIN,
+        ENGLISH,
+        NUMBER,
+        SYMBOL,
+        HALF_WIDTH_NUMBER,
+        HALF_WIDTH_SYMBOL
+    }
 
     private var mode: Mode = Mode.ZHUYIN
     private var zhuyinModeAllowed: Boolean = true
@@ -117,10 +124,7 @@ class ZhuyinKeyboardView @JvmOverloads constructor(
     /** iOS-style page switch: false = 聲母頁, true = 韻母/聲調頁 */
     private var showFinalPage: Boolean = false
     fun setFinalPage(show: Boolean) {
-        if (showFinalPage != show) {
-            showFinalPage = show
-            refresh()
-        }
+        showFinalPage = show
     }
 
     // ============================================================
@@ -248,6 +252,7 @@ class ZhuyinKeyboardView @JvmOverloads constructor(
     }
 
     private val zhuyinKeys = mutableListOf<ZhuyinKey>()
+    private var keyHitBoxes: List<KeyboardHitBox> = emptyList()
     private val controlKeys = mutableListOf<ControlKey>()
     private var candidateBarRect: RectF = RectF()
     private var candidateToggleRect: RectF = RectF()
@@ -334,6 +339,7 @@ class ZhuyinKeyboardView @JvmOverloads constructor(
 
         if (candidateExpanded && candidateBarRect.height() > 0f) {
             zhuyinKeys.clear()
+            keyHitBoxes = emptyList()
             controlKeys.clear()
             toneRects.clear()
             pressedKeyIdx = -1
@@ -362,6 +368,15 @@ class ZhuyinKeyboardView @JvmOverloads constructor(
                 zhuyinKeys.add(ZhuyinKey(sym, r, slot.toInt(), rect, isTone, isToggle))
             }
             y += keyH + rowSpacing
+        }
+        keyHitBoxes = zhuyinKeys.map { key ->
+            KeyboardHitBox(
+                left = key.rect.left,
+                top = key.rect.top,
+                right = key.rect.right,
+                bottom = key.rect.bottom,
+                enabled = key.label.isNotEmpty()
+            )
         }
         val currentKeyLabels = zhuyinKeys.map { it.label }
         pressedKeyIdx = PressedKeyRemapping.remapIndex(
@@ -410,7 +425,12 @@ class ZhuyinKeyboardView @JvmOverloads constructor(
                     listOf("123", "space", returnKeyLabel)
                 )
             }
-            mode == Mode.NUMBER || mode == Mode.SYMBOL -> Pair(
+            mode in setOf(
+                Mode.NUMBER,
+                Mode.SYMBOL,
+                Mode.HALF_WIDTH_NUMBER,
+                Mode.HALF_WIDTH_SYMBOL
+            ) -> Pair(
                 listOf(
                     if (zhuyinModeAllowed) ControlAction.TOGGLE_FINALS else ControlAction.ENGLISH,
                     *if (zhuyinModeAllowed) {
@@ -562,6 +582,16 @@ class ZhuyinKeyboardView @JvmOverloads constructor(
             rowSpec(IosAuxiliaryLayout.SYMBOL_ROWS[1], startSlot = 0f),
             auxiliaryThirdRowSpec(IosAuxiliaryLayout.SYMBOL_ROWS[2])
         )
+        Mode.HALF_WIDTH_NUMBER -> listOf(
+            rowSpec(IosAuxiliaryLayout.HALF_WIDTH_NUMBER_ROWS[0], startSlot = 0f),
+            rowSpec(IosAuxiliaryLayout.HALF_WIDTH_NUMBER_ROWS[1], startSlot = 0f),
+            auxiliaryThirdRowSpec(IosAuxiliaryLayout.HALF_WIDTH_NUMBER_ROWS[2])
+        )
+        Mode.HALF_WIDTH_SYMBOL -> listOf(
+            rowSpec(IosAuxiliaryLayout.HALF_WIDTH_SYMBOL_ROWS[0], startSlot = 0f),
+            rowSpec(IosAuxiliaryLayout.HALF_WIDTH_SYMBOL_ROWS[1], startSlot = 0f),
+            auxiliaryThirdRowSpec(IosAuxiliaryLayout.HALF_WIDTH_SYMBOL_ROWS[2])
+        )
     }
 
     private fun rowSpec(labels: List<String>, startSlot: Float): KeyRowSpec =
@@ -599,7 +629,10 @@ class ZhuyinKeyboardView @JvmOverloads constructor(
     private fun columnCountForCurrentMode(): Int = when (mode) {
         Mode.ZHUYIN -> ZhuyinDynamicLayout.COLUMN_COUNT
         Mode.ENGLISH -> 10
-        Mode.NUMBER, Mode.SYMBOL -> 10
+        Mode.NUMBER,
+        Mode.SYMBOL,
+        Mode.HALF_WIDTH_NUMBER,
+        Mode.HALF_WIDTH_SYMBOL -> 10
     }
 
     // ============================================================
@@ -926,10 +959,15 @@ class ZhuyinKeyboardView @JvmOverloads constructor(
         for ((i, k) in controlKeys.withIndex()) {
             if (k.rect.contains(x, y)) return TouchTarget.ControlKey(i)
         }
-        // 注音按鍵
-        for ((i, k) in zhuyinKeys.withIndex()) {
-            if (k.label.isNotEmpty() && k.rect.contains(x, y)) return TouchTarget.ZhuyinKey(i)
-        }
+        // 視覺上的按鍵間距仍屬於最近的按鍵觸控區，避免手指落在縫隙時漏字。
+        val keyIndex = KeyboardHitTesting.nearestExpandedIndex(
+            x = x,
+            y = y,
+            boxes = keyHitBoxes,
+            horizontalSlop = maxOf(dp(MIN_KEY_HIT_SLOP_DP), dp(metrics.horizontalGap) * 0.75f),
+            verticalSlop = maxOf(dp(MIN_KEY_HIT_SLOP_DP), dp(metrics.verticalGap) * 0.75f)
+        )
+        if (keyIndex >= 0) return TouchTarget.ZhuyinKey(keyIndex)
         return null
     }
 
@@ -1003,4 +1041,8 @@ class ZhuyinKeyboardView @JvmOverloads constructor(
 
     private fun dp(px: Float): Float = px * resources.displayMetrics.density
     private fun dp(px: Int): Float = px * resources.displayMetrics.density
+
+    companion object {
+        private const val MIN_KEY_HIT_SLOP_DP = 6f
+    }
 }

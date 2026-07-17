@@ -28,6 +28,7 @@ class IOSZhuyinIME : InputMethodService() {
     private var activeSegmentStart: Int = 0
     private var activeSegmentEnd: Int = 0
     private var activeCandidatesProvisional: Boolean = false
+    private var showingPunctuationSuggestions: Boolean = false
     private var showFinalPage: Boolean = false
 
     private var personalizationAllowed = false
@@ -40,6 +41,24 @@ class IOSZhuyinIME : InputMethodService() {
     private var editorComposingStart = -1
     private var editorComposingEnd = -1
     private val expectedCompositionUpdates = ExpectedCompositionUpdateTracker()
+    private val sortedCandidateCache = object : LinkedHashMap<String, List<String>>(
+        CANDIDATE_CACHE_CAPACITY,
+        0.75f,
+        true
+    ) {
+        override fun removeEldestEntry(
+            eldest: MutableMap.MutableEntry<String, List<String>>?
+        ): Boolean = size > CANDIDATE_CACHE_CAPACITY
+    }
+    private val userCandidateCache = object : LinkedHashMap<String, List<String>>(
+        CANDIDATE_CACHE_CAPACITY,
+        0.75f,
+        true
+    ) {
+        override fun removeEldestEntry(
+            eldest: MutableMap.MutableEntry<String, List<String>>?
+        ): Boolean = size > CANDIDATE_CACHE_CAPACITY
+    }
 
     private enum class CandidateCommitResult {
         SUCCESS,
@@ -53,27 +72,41 @@ class IOSZhuyinIME : InputMethodService() {
         runCatching {
             userDictionaryStore.recordSelection(reading, word)
             CandidateLearningSettings.notifyRecordsChanged(this)
+            sortedCandidateCache.clear()
         }.onFailure {
             Log.w(TAG, "Unable to record candidate learning", it)
         }
     }
 
     private fun getSortedCandidates(raw: String): List<String> {
+        sortedCandidateCache[raw]?.let { return it }
         val dictionaryCandidates = candidatesForKey(raw)
-        if (!personalizationAllowed) return dictionaryCandidates
+        if (!personalizationAllowed) {
+            sortedCandidateCache[raw] = dictionaryCandidates
+            return dictionaryCandidates
+        }
 
         val userCandidates = userCandidatesForKey(raw)
+        if (dictionaryCandidates.isEmpty() && userCandidates.isEmpty()) {
+            sortedCandidateCache[raw] = emptyList()
+            return emptyList()
+        }
         val learnedCounts = runCatching {
             userDictionaryStore.getLearningCounts(lookupVariants(raw))
         }.onFailure {
             Log.w(TAG, "Unable to load candidate learning", it)
         }.getOrDefault(emptyMap())
-        return CandidateRanking.order(userCandidates, dictionaryCandidates, learnedCounts)
+        return CandidateRanking.order(userCandidates, dictionaryCandidates, learnedCounts).also {
+            sortedCandidateCache[raw] = it
+        }
     }
 
     private fun userCandidatesForKey(raw: String): List<String> {
         if (!personalizationAllowed || !::userDictionaryStore.isInitialized) return emptyList()
-        return userDictionaryStore.getCandidates(lookupVariants(raw))
+        userCandidateCache[raw]?.let { return it }
+        return userDictionaryStore.getCandidates(lookupVariants(raw)).also {
+            userCandidateCache[raw] = it
+        }
     }
 
     private fun candidatesForKey(raw: String): List<String> {
@@ -154,7 +187,7 @@ class IOSZhuyinIME : InputMethodService() {
         view.onSpace = { handleSpace() }
         view.onReturn = { handleReturn() }
         view.onCandidateConfirm = { handleCandidateConfirm() }
-        view.onCandidatePress = { candidate -> commitSelectedCandidate(candidate) }
+        view.onCandidatePress = { candidate -> handleCandidatePress(candidate) }
         view.onCandidateExpansionToggle = { toggleCandidateExpansion() }
         view.onCandidatePageSwipe = { delta -> moveCandidatePage(delta) }
         view.onEnglishMode = { handleEnglishMode() }
@@ -221,11 +254,14 @@ class IOSZhuyinIME : InputMethodService() {
             activeSegmentStart = 0
             activeSegmentEnd = 0
             activeCandidatesProvisional = false
+            showingPunctuationSuggestions = false
             val editorAccepted = !syncEditorComposition ||
                 syncEditorComposing(clearEmptyComposition = clearEmptyEditorComposition)
             syncKeyboardView()
             return editorAccepted
         }
+
+        showingPunctuationSuggestions = false
 
         val match = ZhuyinComposition.resolveLeadingCandidates(
             raw = raw,
@@ -416,6 +452,14 @@ class IOSZhuyinIME : InputMethodService() {
         vibrateLight()
     }
 
+    private fun handleCandidatePress(candidate: String) {
+        if (showingPunctuationSuggestions && composingText.isEmpty()) {
+            commitPunctuationSuggestion(candidate)
+        } else {
+            commitSelectedCandidate(candidate)
+        }
+    }
+
     private fun moveCandidatePage(delta: Int) {
         if (allCandidates.isEmpty()) return
         val pageSize = ImeBehavior.candidatePageSize(allCandidates)
@@ -558,6 +602,7 @@ class IOSZhuyinIME : InputMethodService() {
                     resetSelection = true,
                     syncEditorComposition = false
                 )
+                if (composingText.isEmpty()) showPunctuationSuggestions()
                 if (provideFeedback) vibrateLight()
                 CandidateCommitResult.SUCCESS
             }
@@ -740,18 +785,37 @@ class IOSZhuyinIME : InputMethodService() {
     private fun handleEnglishMode() {
         if (!drainComposing(recordLearning = true)) return
         keyboardView?.setMode(ZhuyinKeyboardView.Mode.ENGLISH)
+        refreshPunctuationSuggestionsForCurrentMode()
         vibrateLight()
     }
 
     private fun handleNumberMode() {
         if (!drainComposing(recordLearning = true)) return
-        keyboardView?.setMode(ZhuyinKeyboardView.Mode.NUMBER)
+        val view = keyboardView ?: return
+        view.setMode(
+            when (view.getMode()) {
+                ZhuyinKeyboardView.Mode.ENGLISH,
+                ZhuyinKeyboardView.Mode.HALF_WIDTH_NUMBER,
+                ZhuyinKeyboardView.Mode.HALF_WIDTH_SYMBOL ->
+                    ZhuyinKeyboardView.Mode.HALF_WIDTH_NUMBER
+                else -> ZhuyinKeyboardView.Mode.NUMBER
+            }
+        )
+        refreshPunctuationSuggestionsForCurrentMode()
         vibrateLight()
     }
 
     private fun handleSymbolMode() {
         if (!drainComposing(recordLearning = true)) return
-        keyboardView?.setMode(ZhuyinKeyboardView.Mode.SYMBOL)
+        val view = keyboardView ?: return
+        view.setMode(
+            if (view.getMode() == ZhuyinKeyboardView.Mode.HALF_WIDTH_NUMBER) {
+                ZhuyinKeyboardView.Mode.HALF_WIDTH_SYMBOL
+            } else {
+                ZhuyinKeyboardView.Mode.SYMBOL
+            }
+        )
+        refreshPunctuationSuggestionsForCurrentMode()
         vibrateLight()
     }
 
@@ -761,12 +825,52 @@ class IOSZhuyinIME : InputMethodService() {
             currentInputConnection?.commitText(ch, 1) == true
         }
         if (!committed) return
+        showPunctuationSuggestions()
         vibrateLight()
+    }
+
+    private fun commitPunctuationSuggestion(punctuation: String) {
+        val committed = safeEditorOperation("punctuation suggestion commit") {
+            currentInputConnection?.commitText(punctuation, 1) == true
+        }
+        if (!committed) return
+        showPunctuationSuggestions()
+        vibrateLight()
+    }
+
+    private fun showPunctuationSuggestions() {
+        if (composingText.isNotEmpty()) return
+        val mode = keyboardView?.getMode() ?: return
+        allCandidates = if (
+            mode == ZhuyinKeyboardView.Mode.ENGLISH ||
+            mode == ZhuyinKeyboardView.Mode.HALF_WIDTH_NUMBER ||
+            mode == ZhuyinKeyboardView.Mode.HALF_WIDTH_SYMBOL
+        ) {
+            PunctuationSuggestions.HALF_WIDTH
+        } else {
+            PunctuationSuggestions.FULL_WIDTH
+        }
+        showingPunctuationSuggestions = true
+        selectedCandidateIndex = -1
+        candidatePage = 0
+        candidatesExpanded = false
+        activeSegmentStart = 0
+        activeSegmentEnd = 0
+        activeCandidatesProvisional = false
+        syncKeyboardView()
+    }
+
+    private fun refreshPunctuationSuggestionsForCurrentMode() {
+        if (showingPunctuationSuggestions) showPunctuationSuggestions()
     }
 
     private fun handleToggleToZhuyin() {
         keyboardView?.setMode(ZhuyinKeyboardView.Mode.ZHUYIN)
-        syncKeyboardView()
+        if (showingPunctuationSuggestions) {
+            showPunctuationSuggestions()
+        } else {
+            syncKeyboardView()
+        }
         vibrateLight()
     }
 
@@ -807,6 +911,7 @@ class IOSZhuyinIME : InputMethodService() {
             return false
         }
         resetToInitial()
+        showPunctuationSuggestions()
         if (provideFeedback) vibrateLight()
         return true
     }
@@ -873,6 +978,7 @@ class IOSZhuyinIME : InputMethodService() {
         activeSegmentStart = 0
         activeSegmentEnd = 0
         activeCandidatesProvisional = false
+        showingPunctuationSuggestions = false
         showFinalPage = false
         syncKeyboardView()
     }
@@ -895,6 +1001,8 @@ class IOSZhuyinIME : InputMethodService() {
     override fun onStartInput(attribute: EditorInfo?, restarting: Boolean) {
         stopBackspaceRepeat()
         super.onStartInput(attribute, restarting)
+        sortedCandidateCache.clear()
+        userCandidateCache.clear()
         if (!restarting && composingText.isNotEmpty()) {
             resetToInitial()
         }
@@ -1132,6 +1240,7 @@ class IOSZhuyinIME : InputMethodService() {
         private const val TAG = "IOSZhuyinIME"
         private const val MAX_BACKSPACE_CONTEXT = 64
         private const val PREFIX_CANDIDATE_LIMIT = 18
+        private const val CANDIDATE_CACHE_CAPACITY = 128
         private const val FIRST_TONE = "ˉ"
         private const val NEUTRAL_TONE = "˙"
         private val TONE_CHARS = setOf('ˉ', '˙', 'ˊ', 'ˇ', 'ˋ')

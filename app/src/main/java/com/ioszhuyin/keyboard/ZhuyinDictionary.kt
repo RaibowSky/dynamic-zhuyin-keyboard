@@ -125,6 +125,25 @@ internal class SortedTsvDictionary(source: ByteBuffer) {
     private val lengthRanges: List<LengthRange> by lazy(LazyThreadSafetyMode.PUBLICATION) {
         buildLengthRanges()
     }
+    private val lookupCacheLock = Any()
+    private val candidateCache = object : LinkedHashMap<String, List<String>>(
+        LOOKUP_CACHE_CAPACITY,
+        0.75f,
+        true
+    ) {
+        override fun removeEldestEntry(
+            eldest: MutableMap.MutableEntry<String, List<String>>?
+        ): Boolean = size > LOOKUP_CACHE_CAPACITY
+    }
+    private val prefixCandidateCache = object : LinkedHashMap<PrefixCacheKey, List<String>>(
+        LOOKUP_CACHE_CAPACITY,
+        0.75f,
+        true
+    ) {
+        override fun removeEldestEntry(
+            eldest: MutableMap.MutableEntry<PrefixCacheKey, List<String>>?
+        ): Boolean = size > LOOKUP_CACHE_CAPACITY
+    }
 
     val keys: Set<String> = object : AbstractSet<String>() {
         override val size: Int by lazy(LazyThreadSafetyMode.PUBLICATION) {
@@ -138,8 +157,21 @@ internal class SortedTsvDictionary(source: ByteBuffer) {
 
     fun getCandidates(key: String): List<String>? {
         if (key.isEmpty()) return null
-        val line = findLine(key) ?: return null
-        return candidatesInLine(line.start, line.end).takeIf { it.isNotEmpty() }
+        synchronized(lookupCacheLock) {
+            candidateCache[key]?.let { cached ->
+                return cached.takeIf { it.isNotEmpty() }
+            }
+        }
+        val line = findLine(key)
+        val candidates = if (line == null) {
+            emptyList()
+        } else {
+            candidatesInLine(line.start, line.end)
+        }
+        synchronized(lookupCacheLock) {
+            candidateCache[key] = candidates
+        }
+        return candidates.takeIf { it.isNotEmpty() }
     }
 
     /**
@@ -150,6 +182,11 @@ internal class SortedTsvDictionary(source: ByteBuffer) {
      */
     fun getPrefixCandidates(prefix: String, limit: Int): List<String> {
         if (prefix.isEmpty() || limit <= 0) return emptyList()
+
+        val cacheKey = PrefixCacheKey(prefix, limit)
+        synchronized(lookupCacheLock) {
+            prefixCandidateCache[cacheKey]?.let { return it }
+        }
 
         val prefixLength = prefix.codePointCount(0, prefix.length)
         val scores = linkedMapOf<String, PrefixCandidateScore>()
@@ -189,7 +226,7 @@ internal class SortedTsvDictionary(source: ByteBuffer) {
             if (matchingRows >= MAX_PREFIX_MATCHING_ROWS) break
         }
 
-        return scores.entries
+        val candidates = scores.entries
             .sortedWith(
                 compareBy<Map.Entry<String, PrefixCandidateScore>> {
                     it.value.shortestReadingLength
@@ -205,6 +242,10 @@ internal class SortedTsvDictionary(source: ByteBuffer) {
             .map { it.key }
             .take(limit)
             .toList()
+        synchronized(lookupCacheLock) {
+            prefixCandidateCache[cacheKey] = candidates
+        }
+        return candidates
     }
 
     fun keySequence(): Sequence<String> = sequence {
@@ -377,6 +418,11 @@ internal class SortedTsvDictionary(source: ByteBuffer) {
         var appearances: Int = 0
     )
 
+    private data class PrefixCacheKey(
+        val prefix: String,
+        val limit: Int
+    )
+
     companion object {
         private const val COMMENT = '#'.code
         private const val SPACE = ' '.code
@@ -385,6 +431,7 @@ internal class SortedTsvDictionary(source: ByteBuffer) {
         private const val LINE_FEED = '\n'.code
         private const val MAX_PREFIX_MATCHING_ROWS = 64
         private const val MAX_PREFIX_CANDIDATES_PER_ROW = 4
+        private const val LOOKUP_CACHE_CAPACITY = 256
 
         private fun compareKeyToPrefix(key: String, prefix: String): Int {
             var keyIndex = 0

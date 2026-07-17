@@ -114,6 +114,21 @@ class SortedTsvDictionaryTest {
     }
 
     @Test
+    fun repeatedLookupsPreserveMissingRowsAndIndependentPrefixLimits() {
+        val reader = readerOf(
+            "aa" to "A B",
+            "ab" to "B C",
+            "aaa" to "D"
+        )
+
+        assertNull(reader.getCandidates("missing"))
+        assertNull(reader.getCandidates("missing"))
+        assertEquals(listOf("B"), reader.getPrefixCandidates("a", limit = 1))
+        assertEquals(listOf("B", "A", "C"), reader.getPrefixCandidates("a", limit = 3))
+        assertEquals(listOf("B"), reader.getPrefixCandidates("a", limit = 1))
+    }
+
+    @Test
     fun binarySearchHandlesThousandsOfVariableLengthRows() {
         val entries = (0 until 2_048).map { index ->
             val key = "ㄅ".repeat(index % 5 + 1) + index.toString().padStart(4, '0')

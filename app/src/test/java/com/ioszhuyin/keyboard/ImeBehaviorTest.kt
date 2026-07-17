@@ -230,6 +230,23 @@ class ImeBehaviorTest {
     }
 
     @Test
+    fun keyboardHitTestingAssignsGapsToTheNearestEnabledKey() {
+        val boxes = listOf(
+            KeyboardHitBox(0f, 0f, 40f, 40f),
+            KeyboardHitBox(48f, 0f, 88f, 40f),
+            KeyboardHitBox(0f, 48f, 40f, 88f),
+            KeyboardHitBox(48f, 48f, 88f, 88f),
+            KeyboardHitBox(96f, 0f, 136f, 40f, enabled = false)
+        )
+
+        assertEquals(0, KeyboardHitTesting.nearestExpandedIndex(20f, 20f, boxes, 8f, 8f))
+        assertEquals(1, KeyboardHitTesting.nearestExpandedIndex(45f, 20f, boxes, 8f, 8f))
+        assertEquals(3, KeyboardHitTesting.nearestExpandedIndex(45f, 46f, boxes, 8f, 8f))
+        assertEquals(-1, KeyboardHitTesting.nearestExpandedIndex(100f, 20f, boxes, 8f, 8f))
+        assertEquals(-1, KeyboardHitTesting.nearestExpandedIndex(-12f, 20f, boxes, 8f, 8f))
+    }
+
+    @Test
     fun zhuyinControlRowMatchesIosDynamicPages() {
         assertEquals(
             listOf("123", "ABC", "空白", "換行"),
@@ -673,6 +690,34 @@ class ImeBehaviorTest {
             ),
             IosAuxiliaryLayout.SYMBOL_ROWS
         )
+        assertEquals(
+            listOf(
+                listOf("1", "2", "3", "4", "5", "6", "7", "8", "9", "0"),
+                listOf("-", "/", ":", ";", "(", ")", "$", "&", "@", "\""),
+                listOf("#+=", ".", ",", "?", "!", "'", "⌫")
+            ),
+            IosAuxiliaryLayout.HALF_WIDTH_NUMBER_ROWS
+        )
+        assertEquals(
+            listOf(
+                listOf("[", "]", "{", "}", "#", "%", "^", "*", "+", "="),
+                listOf("_", "\\", "|", "~", "<", ">", "$", "&", "@", "`"),
+                listOf("123", ".", ",", "?", "!", "'", "⌫")
+            ),
+            IosAuxiliaryLayout.HALF_WIDTH_SYMBOL_ROWS
+        )
+    }
+
+    @Test
+    fun punctuationSuggestionsKeepChineseAndAsciiFormsSeparate() {
+        assertEquals(
+            listOf("，", "。", "、", "？", "！", "：", "；", "「", "」", "（", "）", "……"),
+            PunctuationSuggestions.FULL_WIDTH
+        )
+        assertEquals(
+            listOf(",", ".", "?", "!", ":", ";", "\"", "'", "(", ")", "-", "/"),
+            PunctuationSuggestions.HALF_WIDTH
+        )
     }
 
     @Test
@@ -688,6 +733,10 @@ class ImeBehaviorTest {
         assertEquals(
             IosAuxiliaryLayout.NUMBER_ROWS[2].size,
             IosAuxiliaryLayout.SYMBOL_ROWS[2].size
+        )
+        assertEquals(
+            IosAuxiliaryLayout.HALF_WIDTH_NUMBER_ROWS[2].size,
+            IosAuxiliaryLayout.HALF_WIDTH_SYMBOL_ROWS[2].size
         )
     }
 

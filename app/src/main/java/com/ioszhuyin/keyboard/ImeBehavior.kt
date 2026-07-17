@@ -128,6 +128,67 @@ internal object CandidatePanelBehavior {
     }
 }
 
+internal data class KeyboardHitBox(
+    val left: Float,
+    val top: Float,
+    val right: Float,
+    val bottom: Float,
+    val enabled: Boolean = true
+)
+
+internal object KeyboardHitTesting {
+    fun nearestExpandedIndex(
+        x: Float,
+        y: Float,
+        boxes: List<KeyboardHitBox>,
+        horizontalSlop: Float,
+        verticalSlop: Float
+    ): Int {
+        var bestIndex = -1
+        var bestEdgeDistance = Float.POSITIVE_INFINITY
+        var bestCenterDistance = Float.POSITIVE_INFINITY
+
+        boxes.forEachIndexed { index, box ->
+            if (!box.enabled) return@forEachIndexed
+            if (
+                x < box.left - horizontalSlop ||
+                x > box.right + horizontalSlop ||
+                y < box.top - verticalSlop ||
+                y > box.bottom + verticalSlop
+            ) {
+                return@forEachIndexed
+            }
+
+            val dx = when {
+                x < box.left -> box.left - x
+                x > box.right -> x - box.right
+                else -> 0f
+            }
+            val dy = when {
+                y < box.top -> box.top - y
+                y > box.bottom -> y - box.bottom
+                else -> 0f
+            }
+            val edgeDistance = dx * dx + dy * dy
+            val centerX = (box.left + box.right) / 2f
+            val centerY = (box.top + box.bottom) / 2f
+            val centerDx = x - centerX
+            val centerDy = y - centerY
+            val centerDistance = centerDx * centerDx + centerDy * centerDy
+
+            if (
+                edgeDistance < bestEdgeDistance ||
+                (edgeDistance == bestEdgeDistance && centerDistance < bestCenterDistance)
+            ) {
+                bestIndex = index
+                bestEdgeDistance = edgeDistance
+                bestCenterDistance = centerDistance
+            }
+        }
+        return bestIndex
+    }
+}
+
 internal object IosAuxiliaryLayout {
     val NUMBER_ROWS: List<List<String>> = listOf(
         listOf("1", "2", "3", "4", "5", "6", "7", "8", "9", "0"),
@@ -139,6 +200,28 @@ internal object IosAuxiliaryLayout {
         listOf("[", "]", "{", "}", "#", "%", "^", "*", "+", "="),
         listOf("_", "—", "\\", "|", "~", "«", "»", "¥", "&", "·"),
         listOf("123", "…", "，", "^_^", "?", "!", "’", "⌫")
+    )
+
+    val HALF_WIDTH_NUMBER_ROWS: List<List<String>> = listOf(
+        listOf("1", "2", "3", "4", "5", "6", "7", "8", "9", "0"),
+        listOf("-", "/", ":", ";", "(", ")", "$", "&", "@", "\""),
+        listOf("#+=", ".", ",", "?", "!", "'", "⌫")
+    )
+
+    val HALF_WIDTH_SYMBOL_ROWS: List<List<String>> = listOf(
+        listOf("[", "]", "{", "}", "#", "%", "^", "*", "+", "="),
+        listOf("_", "\\", "|", "~", "<", ">", "$", "&", "@", "`"),
+        listOf("123", ".", ",", "?", "!", "'", "⌫")
+    )
+}
+
+internal object PunctuationSuggestions {
+    val FULL_WIDTH: List<String> = listOf(
+        "，", "。", "、", "？", "！", "：", "；", "「", "」", "（", "）", "……"
+    )
+
+    val HALF_WIDTH: List<String> = listOf(
+        ",", ".", "?", "!", ":", ";", "\"", "'", "(", ")", "-", "/"
     )
 }
 
