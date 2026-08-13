@@ -11,10 +11,10 @@ dictionaries, trademark assets, or other copyrighted materials.
 ## Current Features
 
 - Dynamic Zhuyin keyboard flow inspired by iOS-style input behavior.
-- Stable key positions for Zhuyin and English layouts.
+- Stable key positions for the Zhuyin, number, and symbol layouts.
 - Zhuyin candidate lookup from a generated dictionary asset.
 - Continuous multi-syllable composition with phrase candidates, per-syllable sentence fallback, and tone-sandhi recovery for 一 and 不.
-- English, number, and symbol input modes.
+- Number and symbol input modes; English input is delegated to the user's other enabled system IMEs.
 - Offline processing without network permission.
 
 ## OpenAI Build Week: Codex and GPT-5.6
@@ -76,7 +76,8 @@ After installation, open the Dynamic Zhuyin Keyboard app:
 - Enter several Zhuyin syllables continuously and inspect dynamic phrase candidates and per-syllable sentence fallback.
 - Select a non-default candidate, then type the same reading again to verify local candidate learning.
 - Open the main app to test learning pause/clear controls, manual dictionary entries, and import/export.
-- Confirm that password fields stay in non-learning English mode while Chrome's omnibox still accepts Chinese search input.
+- Confirm that the ABC key switches to another enabled system IME, or opens the system IME picker when none is available.
+- Confirm that password fields never learn and still let users reach their system keyboard for ASCII input, while Chrome's omnibox still accepts Chinese search input.
 - The manifest declares no Internet permission; composition and candidate learning remain on the device.
 
 ## Dictionary Data

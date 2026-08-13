@@ -10,6 +10,7 @@ import android.util.Log
 import android.view.KeyEvent
 import android.view.View
 import android.view.inputmethod.EditorInfo
+import android.view.inputmethod.InputMethodManager
 import android.widget.LinearLayout
 import java.io.File
 
@@ -794,9 +795,49 @@ class IOSZhuyinIME : InputMethodService() {
 
     private fun handleEnglishMode() {
         if (!drainComposing(recordLearning = true)) return
-        keyboardView?.setMode(ZhuyinKeyboardView.Mode.ENGLISH)
-        refreshPunctuationSuggestionsForCurrentMode()
+        switchToExternalIme()
         vibrateLight()
+    }
+
+    private fun switchToExternalIme() {
+        val inputMethodManager =
+            getSystemService(INPUT_METHOD_SERVICE) as? InputMethodManager
+        if (inputMethodManager == null) {
+            Log.w(TAG, "InputMethodManager unavailable; cannot delegate ASCII input")
+            return
+        }
+        val outcome = ExternalImeDelegation.delegate(
+            trySwitchToNextIme = ::trySwitchToNextExternalIme,
+            openImePicker = {
+                runCatching { inputMethodManager.showInputMethodPicker() }.isSuccess
+            }
+        )
+        if (outcome != ExternalImeDelegation.Outcome.SWITCHED) {
+            Log.w(TAG, "External IME delegation ended with $outcome")
+        }
+    }
+
+    // switchToNextInputMethod is deprecated in newer SDKs as part of the system
+    // IME-switcher redesign, but it remains the standard way for an IME to
+    // request a switch to the next enabled system IME (there is no direct
+    // non-deprecated equivalent that works across minSdk 24).
+    @Suppress("DEPRECATION")
+    private fun trySwitchToNextExternalIme(): Boolean {
+        return try {
+            val windowToken = window?.window?.attributes?.token
+            if (windowToken == null) {
+                Log.w(TAG, "No window token available for external IME switch")
+                return false
+            }
+            val inputMethodManager =
+                getSystemService(INPUT_METHOD_SERVICE) as InputMethodManager
+            // onlyCurrentIme = false: cycle to the next enabled system IME instead
+            // of toggling subtypes of this IME, which has no English layout anymore.
+            inputMethodManager.switchToNextInputMethod(windowToken, false)
+        } catch (error: RuntimeException) {
+            Log.w(TAG, "External IME switch failed", error)
+            false
+        }
     }
 
     private fun handleNumberMode() {
@@ -804,7 +845,6 @@ class IOSZhuyinIME : InputMethodService() {
         val view = keyboardView ?: return
         view.setMode(
             when (view.getMode()) {
-                ZhuyinKeyboardView.Mode.ENGLISH,
                 ZhuyinKeyboardView.Mode.HALF_WIDTH_NUMBER,
                 ZhuyinKeyboardView.Mode.HALF_WIDTH_SYMBOL ->
                     ZhuyinKeyboardView.Mode.HALF_WIDTH_NUMBER
@@ -852,7 +892,6 @@ class IOSZhuyinIME : InputMethodService() {
         if (composingText.isNotEmpty()) return
         val mode = keyboardView?.getMode() ?: return
         allCandidates = if (
-            mode == ZhuyinKeyboardView.Mode.ENGLISH ||
             mode == ZhuyinKeyboardView.Mode.HALF_WIDTH_NUMBER ||
             mode == ZhuyinKeyboardView.Mode.HALF_WIDTH_SYMBOL
         ) {
@@ -889,7 +928,7 @@ class IOSZhuyinIME : InputMethodService() {
         view.setMode(
             when (editorKeyboardMode) {
                 EditorKeyboardMode.ZHUYIN -> ZhuyinKeyboardView.Mode.ZHUYIN
-                EditorKeyboardMode.ENGLISH -> ZhuyinKeyboardView.Mode.ENGLISH
+                EditorKeyboardMode.ENGLISH -> ZhuyinKeyboardView.Mode.NUMBER
                 EditorKeyboardMode.NUMBER -> ZhuyinKeyboardView.Mode.NUMBER
             }
         )

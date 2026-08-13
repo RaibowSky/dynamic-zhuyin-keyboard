@@ -50,11 +50,10 @@ class ZhuyinKeyboardView @JvmOverloads constructor(
     private val TONE_CHARS: Set<Char> = setOf('ˉ', '˙', 'ˊ', 'ˇ', 'ˋ')
 
     // ============================================================
-    // 鍵盤模式 (zhuyin / english / number / symbol)
+    // 鍵盤模式 (zhuyin / number / symbol)
     // ============================================================
     enum class Mode {
         ZHUYIN,
-        ENGLISH,
         NUMBER,
         SYMBOL,
         HALF_WIDTH_NUMBER,
@@ -63,12 +62,10 @@ class ZhuyinKeyboardView @JvmOverloads constructor(
 
     private var mode: Mode = Mode.ZHUYIN
     private var zhuyinModeAllowed: Boolean = true
-    private var englishShifted: Boolean = false
     private var returnKeyLabel: String = "換行"
     fun setMode(m: Mode) {
-        mode = if (m == Mode.ZHUYIN && !zhuyinModeAllowed) Mode.ENGLISH else m
+        mode = if (m == Mode.ZHUYIN && !zhuyinModeAllowed) Mode.NUMBER else m
         if (mode != Mode.ZHUYIN) showFinalPage = false
-        if (mode != Mode.ENGLISH) englishShifted = false
         refresh()
     }
     fun getMode(): Mode = mode
@@ -83,15 +80,11 @@ class ZhuyinKeyboardView @JvmOverloads constructor(
         if (zhuyinModeAllowed == allowed) return
         zhuyinModeAllowed = allowed
         if (!allowed && mode == Mode.ZHUYIN) {
-            mode = Mode.ENGLISH
+            mode = Mode.NUMBER
             showFinalPage = false
         }
         refresh()
     }
-
-    private val ENGLISH_R1 = listOf("q", "w", "e", "r", "t", "y", "u", "i", "o", "p")
-    private val ENGLISH_R2 = listOf("a", "s", "d", "f", "g", "h", "j", "k", "l")
-    private val ENGLISH_R3 = listOf("z", "x", "c", "v", "b", "n", "m")
 
     // ============================================================
     // 公開狀態
@@ -397,7 +390,7 @@ class ZhuyinKeyboardView @JvmOverloads constructor(
         y -= rowSpacing  // 最後一列不加分隔
         y += controlSpacing
 
-        // 控制列: ABC / 注只切換本鍵盤語言；系統輸入法切換由導覽列處理。
+        // 控制列: ABC 切換到系統其他輸入法；注/123 在本鍵盤頁面之間切換。
         controlKeys.clear()
         val (actions, labels) = when {
             mode == Mode.ZHUYIN && showFinalPage -> Pair(
@@ -413,18 +406,6 @@ class ZhuyinKeyboardView @JvmOverloads constructor(
                     returnLabel = returnKeyLabel
                 )
             )
-            mode == Mode.ENGLISH -> if (zhuyinModeAllowed) {
-                Pair(
-                    listOf(ControlAction.NUMBER, ControlAction.TOGGLE_FINALS,
-                        ControlAction.SPACE, ControlAction.RETURN),
-                    listOf("123", "注", "space", returnKeyLabel)
-                )
-            } else {
-                Pair(
-                    listOf(ControlAction.NUMBER, ControlAction.SPACE, ControlAction.RETURN),
-                    listOf("123", "space", returnKeyLabel)
-                )
-            }
             mode in setOf(
                 Mode.NUMBER,
                 Mode.SYMBOL,
@@ -567,11 +548,6 @@ class ZhuyinKeyboardView @JvmOverloads constructor(
                 }
             )
         }
-        Mode.ENGLISH -> listOf(
-            rowSpec(englishLabels(ENGLISH_R1), startSlot = 0f),
-            rowSpec(englishLabels(ENGLISH_R2), startSlot = 0.5f),
-            englishThirdRowSpec()
-        )
         Mode.NUMBER -> listOf(
             rowSpec(IosAuxiliaryLayout.NUMBER_ROWS[0], startSlot = 0f),
             rowSpec(IosAuxiliaryLayout.NUMBER_ROWS[1], startSlot = 0f),
@@ -597,18 +573,6 @@ class ZhuyinKeyboardView @JvmOverloads constructor(
     private fun rowSpec(labels: List<String>, startSlot: Float): KeyRowSpec =
         KeyRowSpec(labels.mapIndexed { index, label -> KeySpec(label, startSlot + index) })
 
-    private fun englishLabels(labels: List<String>): List<String> =
-        if (englishShifted) labels.map { it.uppercase() } else labels
-
-    private fun englishThirdRowSpec(): KeyRowSpec =
-        KeyRowSpec(
-            listOf(KeySpec("⇧", metrics.rowOffset3, metrics.englishFunctionKeyWidth)) +
-                englishLabels(ENGLISH_R3).mapIndexed { index, label ->
-                    KeySpec(label, metrics.englishLetterStartSlot + index)
-                } +
-                listOf(KeySpec("⌫", columnCountForCurrentMode() - metrics.englishFunctionKeyWidth, metrics.englishFunctionKeyWidth))
-        )
-
     private fun auxiliaryThirdRowSpec(labels: List<String>): KeyRowSpec {
         val slots = ZhuyinDynamicLayout.evenlyFilledRow(
             keyCount = labels.size,
@@ -628,7 +592,6 @@ class ZhuyinKeyboardView @JvmOverloads constructor(
 
     private fun columnCountForCurrentMode(): Int = when (mode) {
         Mode.ZHUYIN -> ZhuyinDynamicLayout.COLUMN_COUNT
-        Mode.ENGLISH -> 10
         Mode.NUMBER,
         Mode.SYMBOL,
         Mode.HALF_WIDTH_NUMBER,
@@ -1010,20 +973,10 @@ class ZhuyinKeyboardView @JvmOverloads constructor(
                     }
                 } else {
                     when (key.label) {
-                        "⇧" -> {
-                            englishShifted = !englishShifted
-                            refresh()
-                        }
                         "#+=" -> onSymbolMode?.invoke()
                         "123" -> onNumberMode?.invoke()
                         "⌫" -> { /* handled on DOWN/UP for repeat delete */ }
-                        else -> if (key.label.isNotEmpty()) {
-                            onSymbolChar?.invoke(key.label)
-                            if (mode == Mode.ENGLISH && englishShifted) {
-                                englishShifted = false
-                                refresh()
-                            }
-                        }
+                        else -> if (key.label.isNotEmpty()) onSymbolChar?.invoke(key.label)
                     }
                 }
             }
