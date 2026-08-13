@@ -1,5 +1,6 @@
 package com.ioszhuyin.keyboard
 
+import android.content.res.Configuration
 import android.graphics.Typeface
 import android.inputmethodservice.InputMethodService
 import android.os.Build
@@ -214,7 +215,13 @@ class IOSZhuyinIME : InputMethodService() {
         view.setReturnKeyLabel(editorReturnKeyLabel)
         applyEditorKeyboardMode()
         syncKeyboardView()
+        applySystemTheme()
         return view
+    }
+
+    override fun onConfigurationChanged(newConfig: Configuration) {
+        super.onConfigurationChanged(newConfig)
+        applySystemTheme()
     }
 
     private fun onZhuyinKeyPressed(key: String) {
@@ -1034,6 +1041,7 @@ class IOSZhuyinIME : InputMethodService() {
     override fun onStartInputView(info: EditorInfo?, restarting: Boolean) {
         stopBackspaceRepeat()
         super.onStartInputView(info, restarting)
+        applySystemTheme()
         keyboardView?.setReturnKeyLabel(editorReturnKeyLabel)
         if (composingText.isEmpty() && !editorCompositionPending) {
             resetToInitial()
@@ -1161,6 +1169,10 @@ class IOSZhuyinIME : InputMethodService() {
         stopBackspaceRepeat()
         if (finishComposingForLifecycle()) resetToInitial()
         super.onWindowHidden()
+    }
+
+    private fun applySystemTheme() {
+        keyboardView?.applySystemTheme()
     }
 
     override fun onKeyDown(keyCode: Int, event: KeyEvent): Boolean = when (keyCode) {

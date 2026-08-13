@@ -4,6 +4,7 @@ import android.app.AlertDialog
 import android.content.Intent
 import android.content.SharedPreferences
 import android.content.res.ColorStateList
+import android.content.res.Configuration
 import android.net.Uri
 import android.os.Bundle
 import android.view.Gravity
@@ -41,6 +42,7 @@ class MainActivity : AppCompatActivity() {
     private var selectedEntry: UserDictionaryEntry? = null
     private var listRefreshGeneration: Long = 0
     private var listLoading = false
+    private lateinit var palette: SettingsPalette
     private val learningPreferencesListener =
         SharedPreferences.OnSharedPreferenceChangeListener listener@ { _, key ->
             if (CandidateLearningSettings.isRecordsChange(key)) {
@@ -55,6 +57,7 @@ class MainActivity : AppCompatActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        palette = ThemePalette.settings(this)
         store = UserDictionaryStore(this)
         buildLayout()
         refreshList()
@@ -85,9 +88,15 @@ class MainActivity : AppCompatActivity() {
 
     override fun onResume() {
         super.onResume()
+        applySystemThemeIfNeeded()
         if (::learningStatusText.isInitialized && ::learningToggleButton.isInitialized) {
             refreshLearningStatus()
         }
+    }
+
+    override fun onConfigurationChanged(newConfig: Configuration) {
+        super.onConfigurationChanged(newConfig)
+        applySystemThemeIfNeeded()
     }
 
     override fun onWindowFocusChanged(hasFocus: Boolean) {
@@ -113,13 +122,13 @@ class MainActivity : AppCompatActivity() {
         val root = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             setPadding(dp(20), dp(20), dp(20), dp(20))
-            setBackgroundColor(0xFFF3F4F6.toInt())
+            setBackgroundColor(palette.background)
         }
 
         val title = TextView(this).apply {
             text = "動態注音鍵盤"
             textSize = 26f
-            setTextColor(0xFF1F2937.toInt())
+            setTextColor(palette.title)
             gravity = Gravity.CENTER
         }
         root.addView(title, LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT)
@@ -127,19 +136,19 @@ class MainActivity : AppCompatActivity() {
         val subtitle = TextView(this).apply {
             text = "字典管理"
             textSize = 15f
-            setTextColor(0xFF6B7280.toInt())
+            setTextColor(palette.subtitle)
             gravity = Gravity.CENTER
             setPadding(0, dp(4), 0, dp(16))
         }
         root.addView(subtitle, LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT)
 
         root.addView(
-            button("啟用鍵盤", 0xFF2563EB.toInt()) {
+            button("啟用鍵盤", palette.primary) {
                 startActivity(Intent(android.provider.Settings.ACTION_INPUT_METHOD_SETTINGS))
             }
         )
         root.addView(
-            button("切換鍵盤", 0xFF047857.toInt()) {
+            button("切換鍵盤", palette.secondary) {
                 val imm = getSystemService(INPUT_METHOD_SERVICE) as InputMethodManager
                 imm.showInputMethodPicker()
             }
@@ -147,14 +156,14 @@ class MainActivity : AppCompatActivity() {
 
         statusText = TextView(this).apply {
             textSize = 14f
-            setTextColor(0xFF4B5563.toInt())
+            setTextColor(palette.status)
             setPadding(0, dp(14), 0, dp(8))
         }
         root.addView(statusText, LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT)
 
         learningStatusText = TextView(this).apply {
             textSize = 14f
-            setTextColor(0xFF4B5563.toInt())
+            setTextColor(palette.status)
             setPadding(0, dp(4), 0, dp(8))
         }
         root.addView(
@@ -164,10 +173,10 @@ class MainActivity : AppCompatActivity() {
         )
 
         val learningRow = row()
-        learningToggleButton = button("", 0xFF7C3AED.toInt()) { toggleLearning() }
+        learningToggleButton = button("", palette.learning) { toggleLearning() }
         learningRow.addView(learningToggleButton, rowWeight())
         learningRow.addView(
-            button("清除學習紀錄", 0xFFDC2626.toInt()) { confirmClearLearning() },
+            button("清除學習紀錄", palette.danger) { confirmClearLearning() },
             rowWeight()
         )
         root.addView(learningRow)
@@ -180,26 +189,26 @@ class MainActivity : AppCompatActivity() {
         root.addView(wordInput)
 
         val editRow = row()
-        editRow.addView(button("新增", 0xFF2563EB.toInt()) { addEntry() }, rowWeight())
-        editRow.addView(button("更新", 0xFF7C3AED.toInt()) { updateEntry() }, rowWeight())
-        editRow.addView(button("清空", 0xFF6B7280.toInt()) { clearSelection() }, rowWeight())
+        editRow.addView(button("新增", palette.primary) { addEntry() }, rowWeight())
+        editRow.addView(button("更新", palette.learning) { updateEntry() }, rowWeight())
+        editRow.addView(button("清空", palette.neutral) { clearSelection() }, rowWeight())
         root.addView(editRow)
 
         searchInput = editText("搜尋注音或詞彙")
         root.addView(searchInput)
 
         val searchRow = row()
-        searchRow.addView(button("搜尋", 0xFF374151.toInt()) { refreshList() }, rowWeight())
-        searchRow.addView(button("顯示全部", 0xFF6B7280.toInt()) {
+        searchRow.addView(button("搜尋", palette.search) { refreshList() }, rowWeight())
+        searchRow.addView(button("顯示全部", palette.neutral) {
             searchInput.setText("")
             refreshList()
         }, rowWeight())
-        searchRow.addView(button("刪除", 0xFFDC2626.toInt()) { confirmDelete() }, rowWeight())
+        searchRow.addView(button("刪除", palette.danger) { confirmDelete() }, rowWeight())
         root.addView(searchRow)
 
         val fileRow = row()
-        fileRow.addView(button("匯入", 0xFF0E7490.toInt()) { openImportFile() }, rowWeight())
-        fileRow.addView(button("匯出", 0xFF047857.toInt()) { chooseExportContent() }, rowWeight())
+        fileRow.addView(button("匯入", palette.importAccent) { openImportFile() }, rowWeight())
+        fileRow.addView(button("匯出", palette.secondary) { chooseExportContent() }, rowWeight())
         root.addView(fileRow)
 
         if (isDebugBuild()) {
@@ -226,7 +235,7 @@ class MainActivity : AppCompatActivity() {
                 "檔案上限 16 MB、總筆數上限 50,000。一般匯出只包含手動新增詞彙；" +
                 "候選學習紀錄必須另外選擇並確認風險。"
             textSize = 13f
-            setTextColor(0xFF6B7280.toInt())
+            setTextColor(palette.muted)
             setPadding(0, dp(12), 0, 0)
         }
         root.addView(info)
@@ -578,11 +587,11 @@ class MainActivity : AppCompatActivity() {
             addView(sectionTitle("鍵盤版面調整"))
 
             val presetRow = row()
-            presetRow.addView(button("Pixel 預設", 0xFF475569.toInt()) {
+            presetRow.addView(button("Pixel 預設", palette.debugPixel) {
                 KeyboardMetrics.applyPreset(this@MainActivity, KeyboardMetrics.PRESET_PIXEL)
                 toast("已套用 Pixel 預設")
             }, rowWeight())
-            presetRow.addView(button("iOS 預設", 0xFF334155.toInt()) {
+            presetRow.addView(button("iOS 預設", palette.debugIos) {
                 KeyboardMetrics.applyPreset(this@MainActivity, KeyboardMetrics.PRESET_IOS)
                 toast("已套用 iOS 預設")
             }, rowWeight())
@@ -607,7 +616,7 @@ class MainActivity : AppCompatActivity() {
         TextView(this).apply {
             text = textValue
             textSize = 16f
-            setTextColor(0xFF1F2937.toInt())
+            setTextColor(palette.title)
             setPadding(0, dp(10), 0, dp(8))
         }
 
@@ -616,7 +625,7 @@ class MainActivity : AppCompatActivity() {
         val current = KeyboardMetrics.current(this)
         val initial = prefs.getFloat(key, metricValue(current, key)).coerceIn(min, max)
         val label = TextView(this).apply {
-            setTextColor(0xFF374151.toInt())
+            setTextColor(palette.status)
             textSize = 13f
         }
         val seek = SeekBar(this).apply {
@@ -694,8 +703,8 @@ class MainActivity : AppCompatActivity() {
             text = symbol
             textSize = if (symbol.length == 1) 18f else 13f
             isAllCaps = false
-            setTextColor(0xFF1F2937.toInt())
-            setBackgroundColor(0xFFE5E7EB.toInt())
+            setTextColor(palette.inputText)
+            setBackgroundColor(palette.chipBackground)
             setOnClickListener {
                 when (symbol) {
                     "退格" -> {
@@ -725,9 +734,9 @@ class MainActivity : AppCompatActivity() {
         EditText(this).apply {
             hint = hintText
             textSize = 16f
-            setTextColor(0xFF1F2937.toInt())
-            setHintTextColor(0xFF9CA3AF.toInt())
-            backgroundTintList = ColorStateList.valueOf(0xFFD1D5DB.toInt())
+            setTextColor(palette.inputText)
+            setHintTextColor(palette.inputHint)
+            backgroundTintList = ColorStateList.valueOf(palette.inputUnderline)
             setSingleLine(true)
             setPadding(dp(12), 0, dp(12), 0)
             layoutParams = LinearLayout.LayoutParams(
@@ -743,7 +752,7 @@ class MainActivity : AppCompatActivity() {
             text = label
             textSize = 15f
             isAllCaps = false
-            setTextColor(0xFFFFFFFF.toInt())
+            setTextColor(palette.buttonText)
             setBackgroundColor(color)
             setOnClickListener { action() }
             layoutParams = LinearLayout.LayoutParams(
@@ -772,6 +781,19 @@ class MainActivity : AppCompatActivity() {
 
     private fun isDebugBuild(): Boolean =
         (applicationInfo.flags and android.content.pm.ApplicationInfo.FLAG_DEBUGGABLE) != 0
+
+    private fun applySystemThemeIfNeeded() {
+        val next = ThemePalette.settings(this)
+        if (::palette.isInitialized && next == palette) return
+        palette = next
+        if (::store.isInitialized) {
+            buildLayout()
+            refreshList()
+            if (::learningStatusText.isInitialized && ::learningToggleButton.isInitialized) {
+                refreshLearningStatus()
+            }
+        }
+    }
 
     private fun dp(value: Int): Int =
         (value * resources.displayMetrics.density).toInt()

@@ -4,8 +4,7 @@
     android:layout_height="match_parent"
     android:orientation="vertical"
     android:padding="32dp"
-    android:gravity="center"
-    android:background="#F3F4F6">
+    android:gravity="center">
 
     <TextView
         android:layout_width="wrap_content"
@@ -13,7 +12,7 @@
         android:text="@string/app_name"
         android:textSize="28sp"
         android:textStyle="bold"
-        android:textColor="#1F2937"
+        android:textColor="@color/text_primary"
         android:layout_marginBottom="4dp"/>
 
     <TextView
@@ -21,7 +20,7 @@
         android:layout_height="wrap_content"
         android:text="Taiwan Zhuyin Keyboard"
         android:textSize="13sp"
-        android:textColor="#9CA3AF"
+        android:textColor="@color/text_hint"
         android:layout_marginBottom="28dp"/>
 
     <ImageView
@@ -36,7 +35,7 @@
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:textSize="14sp"
-        android:textColor="#4B5563"
+        android:textColor="@color/text_secondary"
         android:lineSpacingExtra="7dp"
         android:gravity="left"
         android:layout_marginBottom="28dp"
@@ -49,8 +48,8 @@
         android:layout_height="54dp"
         android:text="開啟鍵盤設定"
         android:textSize="15sp"
-        android:textColor="#FFFFFF"
-        android:backgroundTint="#3B82F6"
+        android:textColor="@color/color_on_primary"
+        android:backgroundTint="@color/color_primary"
         android:layout_marginBottom="10dp"
         android:textAllCaps="false"/>
 
@@ -60,8 +59,8 @@
         android:layout_height="54dp"
         android:text="切換鍵盤"
         android:textSize="15sp"
-        android:textColor="#FFFFFF"
-        android:backgroundTint="#10B981"
+        android:textColor="@color/color_on_secondary"
+        android:backgroundTint="@color/color_secondary"
         android:textAllCaps="false"/>
 
 </LinearLayout>
