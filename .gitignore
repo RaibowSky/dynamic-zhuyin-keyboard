@@ -14,3 +14,13 @@ tmp_video_frames/
 *.mp4
 
 *.log
+
+# Release identity and local signing configuration must never enter Git.
+*.jks
+*.keystore
+*.p12
+*.pfx
+signing.properties
+keystore.properties
+signing-*.properties
+tools/__pycache__/

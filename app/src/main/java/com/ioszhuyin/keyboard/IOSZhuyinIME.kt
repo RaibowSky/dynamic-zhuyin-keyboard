@@ -1,5 +1,6 @@
 package com.ioszhuyin.keyboard
 
+import android.content.res.Configuration
 import android.graphics.Typeface
 import android.inputmethodservice.InputMethodService
 import android.os.Build
@@ -10,6 +11,7 @@ import android.util.Log
 import android.view.KeyEvent
 import android.view.View
 import android.view.inputmethod.EditorInfo
+import android.view.inputmethod.InputMethodManager
 import android.widget.LinearLayout
 import java.io.File
 
@@ -192,6 +194,7 @@ class IOSZhuyinIME : InputMethodService() {
 
     override fun onCreateInputView(): View {
         val view = ZhuyinKeyboardView(this)
+        view.customTypeface = KeyboardFont.load(this)
         view.bopomofoTypeface = bopomofoTypeface ?: Typeface.create("sans-serif", Typeface.NORMAL)
 
         view.onKeyPress = { key -> onZhuyinKeyPressed(key) }
@@ -214,7 +217,13 @@ class IOSZhuyinIME : InputMethodService() {
         view.setReturnKeyLabel(editorReturnKeyLabel)
         applyEditorKeyboardMode()
         syncKeyboardView()
+        applySystemTheme()
         return view
+    }
+
+    override fun onConfigurationChanged(newConfig: Configuration) {
+        super.onConfigurationChanged(newConfig)
+        applySystemTheme()
     }
 
     private fun onZhuyinKeyPressed(key: String) {
@@ -794,9 +803,57 @@ class IOSZhuyinIME : InputMethodService() {
 
     private fun handleEnglishMode() {
         if (!drainComposing(recordLearning = true)) return
-        keyboardView?.setMode(ZhuyinKeyboardView.Mode.ENGLISH)
-        refreshPunctuationSuggestionsForCurrentMode()
+        switchToExternalIme()
         vibrateLight()
+    }
+
+    private fun switchToExternalIme() {
+        val inputMethodManager =
+            getSystemService(INPUT_METHOD_SERVICE) as? InputMethodManager
+        if (inputMethodManager == null) {
+            Log.w(TAG, "InputMethodManager unavailable; cannot delegate ASCII input")
+            return
+        }
+        val outcome = ExternalImeDelegation.delegate(
+            trySwitchToPreviousIme = ::trySwitchToPreviousExternalIme,
+            trySwitchToNextIme = ::trySwitchToNextExternalIme,
+            openImePicker = {
+                runCatching { inputMethodManager.showInputMethodPicker() }.isSuccess
+            }
+        )
+        if (outcome != ExternalImeDelegation.Outcome.SWITCHED) {
+            android.widget.Toast.makeText(this, "請選擇其他輸入法輸入英文；若清單只有本鍵盤，請先在系統設定啟用其他鍵盤。", android.widget.Toast.LENGTH_LONG).show()
+            Log.w(TAG, "External IME delegation ended with $outcome")
+        }
+    }
+
+    @Suppress("DEPRECATION")
+    private fun trySwitchToPreviousExternalIme(): Boolean = runCatching {
+        if (Build.VERSION.SDK_INT >= 28) switchToPreviousInputMethod()
+        else {
+            val token = window?.window?.attributes?.token ?: return@runCatching false
+            (getSystemService(INPUT_METHOD_SERVICE) as InputMethodManager).switchToLastInputMethod(token)
+        }
+    }.getOrDefault(false)
+
+    @Suppress("DEPRECATION")
+    private fun trySwitchToNextExternalIme(): Boolean {
+        return try {
+            val windowToken = window?.window?.attributes?.token
+            if (windowToken == null) {
+                Log.w(TAG, "No window token available for external IME switch")
+                return false
+            }
+            val inputMethodManager =
+                getSystemService(INPUT_METHOD_SERVICE) as InputMethodManager
+            // onlyCurrentIme = false: cycle to the next enabled system IME instead
+            // of toggling subtypes of this IME, which has no English layout anymore.
+            if (Build.VERSION.SDK_INT >= 28) switchToNextInputMethod(false)
+            else inputMethodManager.switchToNextInputMethod(windowToken, false)
+        } catch (error: RuntimeException) {
+            Log.w(TAG, "External IME switch failed", error)
+            false
+        }
     }
 
     private fun handleNumberMode() {
@@ -804,7 +861,6 @@ class IOSZhuyinIME : InputMethodService() {
         val view = keyboardView ?: return
         view.setMode(
             when (view.getMode()) {
-                ZhuyinKeyboardView.Mode.ENGLISH,
                 ZhuyinKeyboardView.Mode.HALF_WIDTH_NUMBER,
                 ZhuyinKeyboardView.Mode.HALF_WIDTH_SYMBOL ->
                     ZhuyinKeyboardView.Mode.HALF_WIDTH_NUMBER
@@ -852,7 +908,6 @@ class IOSZhuyinIME : InputMethodService() {
         if (composingText.isNotEmpty()) return
         val mode = keyboardView?.getMode() ?: return
         allCandidates = if (
-            mode == ZhuyinKeyboardView.Mode.ENGLISH ||
             mode == ZhuyinKeyboardView.Mode.HALF_WIDTH_NUMBER ||
             mode == ZhuyinKeyboardView.Mode.HALF_WIDTH_SYMBOL
         ) {
@@ -889,7 +944,7 @@ class IOSZhuyinIME : InputMethodService() {
         view.setMode(
             when (editorKeyboardMode) {
                 EditorKeyboardMode.ZHUYIN -> ZhuyinKeyboardView.Mode.ZHUYIN
-                EditorKeyboardMode.ENGLISH -> ZhuyinKeyboardView.Mode.ENGLISH
+                EditorKeyboardMode.EXTERNAL_ASCII -> ZhuyinKeyboardView.Mode.HALF_WIDTH_NUMBER
                 EditorKeyboardMode.NUMBER -> ZhuyinKeyboardView.Mode.NUMBER
             }
         )
@@ -1034,6 +1089,11 @@ class IOSZhuyinIME : InputMethodService() {
     override fun onStartInputView(info: EditorInfo?, restarting: Boolean) {
         stopBackspaceRepeat()
         super.onStartInputView(info, restarting)
+        keyboardView?.customTypeface = KeyboardFont.load(this)
+        if (!restarting && editorKeyboardMode == EditorKeyboardMode.EXTERNAL_ASCII) {
+            mainHandler.post { if (isInputViewShown && editorKeyboardMode == EditorKeyboardMode.EXTERNAL_ASCII) switchToExternalIme() }
+        }
+        applySystemTheme()
         keyboardView?.setReturnKeyLabel(editorReturnKeyLabel)
         if (composingText.isEmpty() && !editorCompositionPending) {
             resetToInitial()
@@ -1161,6 +1221,26 @@ class IOSZhuyinIME : InputMethodService() {
         stopBackspaceRepeat()
         if (finishComposingForLifecycle()) resetToInitial()
         super.onWindowHidden()
+    }
+
+    private fun applySystemTheme() {
+        keyboardView?.applySystemTheme()
+        val imeWindow = window?.window ?: return
+        val night = ThemePalette.isNightMode(this)
+        @Suppress("DEPRECATION")
+        imeWindow.navigationBarColor = ThemePalette.keyboard(this).background
+        if (Build.VERSION.SDK_INT >= 30) {
+            imeWindow.insetsController?.setSystemBarsAppearance(
+                if (night) 0 else android.view.WindowInsetsController.APPEARANCE_LIGHT_NAVIGATION_BARS,
+                android.view.WindowInsetsController.APPEARANCE_LIGHT_NAVIGATION_BARS)
+        } else if (Build.VERSION.SDK_INT >= 26) {
+            @Suppress("DEPRECATION")
+            imeWindow.decorView.systemUiVisibility = if (night) {
+                imeWindow.decorView.systemUiVisibility and View.SYSTEM_UI_FLAG_LIGHT_NAVIGATION_BAR.inv()
+            } else {
+                imeWindow.decorView.systemUiVisibility or View.SYSTEM_UI_FLAG_LIGHT_NAVIGATION_BAR
+            }
+        }
     }
 
     override fun onKeyDown(keyCode: Int, event: KeyEvent): Boolean = when (keyCode) {

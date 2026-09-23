@@ -127,33 +127,23 @@ class UserDictionaryStore(context: Context) :
 
     fun search(query: String, limit: Int = DEFAULT_SEARCH_LIMIT): List<UserDictionaryEntry> {
         require(limit > 0) { "顯示筆數必須大於 0" }
-        val cleanQuery = query.trim()
-        val selection: String?
-        val args: Array<String>?
-        if (cleanQuery.isEmpty()) {
-            selection = null
-            args = null
-        } else {
-            selection = "$COL_ZHUYIN LIKE ? OR $COL_WORD LIKE ?"
-            args = arrayOf("%$cleanQuery%", "%$cleanQuery%")
-        }
+        val search = UserDictionarySearchPolicy.build(query, COL_ZHUYIN, COL_WORD)
         return readEntries(
-            selection,
-            args,
+            search?.selection,
+            search?.args,
             "$COL_UPDATED_AT DESC, $COL_ID DESC",
             limit.toString()
         )
     }
 
     fun entryCount(query: String): Int {
-        val cleanQuery = query.trim()
-        val count = if (cleanQuery.isEmpty()) {
+        val search = UserDictionarySearchPolicy.build(query, COL_ZHUYIN, COL_WORD)
+        val count = if (search == null) {
             DatabaseUtils.queryNumEntries(readableDatabase, TABLE_NAME)
         } else {
             readableDatabase.rawQuery(
-                "SELECT COUNT(*) FROM $TABLE_NAME " +
-                    "WHERE $COL_ZHUYIN LIKE ? OR $COL_WORD LIKE ?",
-                arrayOf("%$cleanQuery%", "%$cleanQuery%")
+                "SELECT COUNT(*) FROM $TABLE_NAME WHERE ${search.selection}",
+                search.args
             ).use { cursor ->
                 if (cursor.moveToFirst()) cursor.getLong(0) else 0L
             }
@@ -628,6 +618,35 @@ class UserDictionaryStore(context: Context) :
         private const val LEGACY_GLOBAL_READING = "*"
         private const val MAX_LEARNING_COUNT = Int.MAX_VALUE
         private const val DEFAULT_SEARCH_LIMIT = 500
+    }
+}
+
+internal data class UserDictionarySearch(
+    val selection: String,
+    val args: Array<String>
+)
+
+internal object UserDictionarySearchPolicy {
+    private const val LIKE_ESCAPE = '\\'
+
+    fun build(query: String, readingColumn: String, wordColumn: String): UserDictionarySearch? {
+        val cleanQuery = query.trim()
+        if (cleanQuery.isEmpty()) return null
+
+        val pattern = "%${escapeLikeLiteral(cleanQuery)}%"
+        return UserDictionarySearch(
+            selection = "$readingColumn LIKE ? ESCAPE '\\' OR $wordColumn LIKE ? ESCAPE '\\'",
+            args = arrayOf(pattern, pattern)
+        )
+    }
+
+    private fun escapeLikeLiteral(value: String): String = buildString(value.length) {
+        value.forEach { character ->
+            if (character == LIKE_ESCAPE || character == '%' || character == '_') {
+                append(LIKE_ESCAPE)
+            }
+            append(character)
+        }
     }
 }
 

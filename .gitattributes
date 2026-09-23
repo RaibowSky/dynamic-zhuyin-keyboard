@@ -11,6 +11,8 @@
 *.tsv text eol=lf
 *.txt text eol=lf
 *.occ text eol=lf
+*.yml text eol=lf
+*.gz binary
 
 gradlew text eol=lf
 *.bat text eol=crlf

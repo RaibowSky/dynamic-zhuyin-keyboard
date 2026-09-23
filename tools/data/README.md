@@ -1,3 +1,25 @@
+# Reproducible dictionary inputs
+
+CC-CEDICT snapshot: `cedict.txt.gz`, retrieved from MDBG on 2026-09-23.
+Source: https://www.mdbg.net/chinese/export/cedict/cedict_1_0_ts_utf-8_mdbg.txt.gz
+
+SHA-256: `98c1a804e9ecf103494c85c18300dcd792acced9d238350ebcd84297e77a2c30`. License: CC BY-SA 4.0.
+The exact archive is committed; rebuilding requires no download.
+
+From the repository root with Python 3.10+:
+
+```sh
+python tools/rebuild_dictionary.py --check
+# Explicitly regenerate app/src/main/assets/zhuyin_cedict{.tsv,_LICENSE.txt}:
+python tools/rebuild_dictionary.py
+```
+
+Expected TSV SHA-256: `df1664881c7417be73d430ee90915ba13d70aa67f19632a70d170bdeefb5ead9`.
+Both commands verify all three data source checksums before generation.
+The check command compares the asset and complete generated license notice.
+Prefix lookup discovers sorted length boundaries using binary search; no separate
+index can go stale and no full scan is performed on first prefix lookup.
+
 # McBopomofo Dictionary Sources
 
 This directory retains two data files from the same pinned McBopomofo commit.
@@ -44,3 +66,5 @@ content is unchanged.
 The scripts verify both source SHA-256 values before use. Updating either
 source requires updating the pinned commit, checksums, notices, tests, and
 generated asset attribution together. No underlying source corpus is included.
+
+License text build input SHA-256 (`McBopomofo_LICENSE.txt`): `72ed32193b0c629def66df63791b2fb125946b593a3251380e6b949488f47b72`.

@@ -1,0 +1,49 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="color_primary">#60A5FA</color>
+    <color name="color_primary_variant">#3B82F6</color>
+    <color name="color_on_primary">#0B1220</color>
+    <color name="color_secondary">#34D399</color>
+    <color name="color_secondary_variant">#10B981</color>
+    <color name="color_on_secondary">#052016</color>
+    <color name="color_accent_learning">#C4B5FD</color>
+    <color name="color_accent_danger">#F87171</color>
+    <color name="color_accent_import">#22D3EE</color>
+    <color name="color_accent_neutral">#9CA3AF</color>
+    <color name="color_accent_search">#CBD5E1</color>
+    <color name="color_accent_debug_pixel">#94A3B8</color>
+    <color name="color_accent_debug_ios">#64748B</color>
+
+    <color name="surface_background">#111827</color>
+    <color name="surface_elevated">#1F2937</color>
+    <color name="surface_input">#1F2937</color>
+    <color name="surface_chip">#374151</color>
+    <color name="text_primary">#F9FAFB</color>
+    <color name="text_secondary">#D1D5DB</color>
+    <color name="text_muted">#9CA3AF</color>
+    <color name="text_hint">#6B7280</color>
+    <color name="input_underline">#4B5563</color>
+
+    <color name="keyboard_background">#111827</color>
+    <color name="keyboard_top_divider">#1F2937</color>
+    <color name="keyboard_key_background">#1F2937</color>
+    <color name="keyboard_key_background_disabled">#111827</color>
+    <color name="keyboard_key_background_pressed">#4B5563</color>
+    <color name="keyboard_key_stroke">#374151</color>
+    <color name="keyboard_key_text">#F9FAFB</color>
+    <color name="keyboard_key_text_disabled">#4B5563</color>
+    <color name="keyboard_control_background">#374151</color>
+    <color name="keyboard_control_background_pressed">#4B5563</color>
+    <color name="keyboard_control_text">#F3F4F6</color>
+    <color name="keyboard_space_background">#1F2937</color>
+    <color name="keyboard_space_background_pressed">#4B5563</color>
+    <color name="keyboard_space_text">#E5E7EB</color>
+    <color name="keyboard_return_background">#2563EB</color>
+    <color name="keyboard_return_background_pressed">#1D4ED8</color>
+    <color name="keyboard_tone_background">#3B82F6</color>
+    <color name="keyboard_tone_text">#FFFFFF</color>
+    <color name="keyboard_candidate_bar">#0B1220</color>
+    <color name="keyboard_candidate_background">#1F2937</color>
+    <color name="keyboard_candidate_selected">#374151</color>
+    <color name="keyboard_candidate_toggle">#374151</color>
+</resources>

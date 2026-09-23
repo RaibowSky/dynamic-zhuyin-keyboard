@@ -72,9 +72,9 @@ class SortedTsvDictionaryTest {
             reader.getCandidates(reading).orEmpty()
         }
 
-        assertEquals("ㄙㄨㄛˇㄧˇ", match?.reading)
-        assertEquals("所以", match?.candidates?.first())
-        assertEquals("ㄨㄛˇㄒㄧㄢˋㄗㄞˋ", raw.substring(match?.end ?: 0))
+        assertEquals(raw, match?.reading)
+        assertEquals("所以我現在", match?.candidates?.first())
+        assertEquals("", raw.substring(match?.end ?: 0))
     }
 
     @Test

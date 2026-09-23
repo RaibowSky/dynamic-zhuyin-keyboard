@@ -3,6 +3,7 @@ package com.ioszhuyin.keyboard
 import android.content.Context
 import android.content.SharedPreferences
 import android.graphics.*
+import android.content.res.Configuration
 import android.os.Build
 import android.util.AttributeSet
 import android.view.MotionEvent
@@ -36,6 +37,8 @@ class ZhuyinKeyboardView @JvmOverloads constructor(
 ) : View(context, attrs) {
 
     var bopomofoTypeface: Typeface = Typeface.create("sans-serif", Typeface.NORMAL)  // 預設值, 外部可覆寫
+    var customTypeface: Typeface? = null
+        set(value) { field = value; refresh() }
     private var metrics: KeyboardLayoutMetrics = KeyboardMetrics.current(context)
     private val metricsPrefs: SharedPreferences = KeyboardMetrics.prefs(context)
     private val metricsListener =
@@ -50,11 +53,10 @@ class ZhuyinKeyboardView @JvmOverloads constructor(
     private val TONE_CHARS: Set<Char> = setOf('ˉ', '˙', 'ˊ', 'ˇ', 'ˋ')
 
     // ============================================================
-    // 鍵盤模式 (zhuyin / english / number / symbol)
+    // 鍵盤模式 (zhuyin / number / symbol)
     // ============================================================
     enum class Mode {
         ZHUYIN,
-        ENGLISH,
         NUMBER,
         SYMBOL,
         HALF_WIDTH_NUMBER,
@@ -63,12 +65,10 @@ class ZhuyinKeyboardView @JvmOverloads constructor(
 
     private var mode: Mode = Mode.ZHUYIN
     private var zhuyinModeAllowed: Boolean = true
-    private var englishShifted: Boolean = false
     private var returnKeyLabel: String = "換行"
     fun setMode(m: Mode) {
-        mode = if (m == Mode.ZHUYIN && !zhuyinModeAllowed) Mode.ENGLISH else m
+        mode = if (m == Mode.ZHUYIN && !zhuyinModeAllowed) Mode.NUMBER else m
         if (mode != Mode.ZHUYIN) showFinalPage = false
-        if (mode != Mode.ENGLISH) englishShifted = false
         refresh()
     }
     fun getMode(): Mode = mode
@@ -83,15 +83,11 @@ class ZhuyinKeyboardView @JvmOverloads constructor(
         if (zhuyinModeAllowed == allowed) return
         zhuyinModeAllowed = allowed
         if (!allowed && mode == Mode.ZHUYIN) {
-            mode = Mode.ENGLISH
+            mode = Mode.NUMBER
             showFinalPage = false
         }
         refresh()
     }
-
-    private val ENGLISH_R1 = listOf("q", "w", "e", "r", "t", "y", "u", "i", "o", "p")
-    private val ENGLISH_R2 = listOf("a", "s", "d", "f", "g", "h", "j", "k", "l")
-    private val ENGLISH_R3 = listOf("z", "x", "c", "v", "b", "n", "m")
 
     // ============================================================
     // 公開狀態
@@ -169,39 +165,53 @@ class ZhuyinKeyboardView @JvmOverloads constructor(
     // ============================================================
     // 顏色
     // ============================================================
-    private val colorKeyBg = Color.WHITE
-    private val colorKeyBgDisabled = Color.parseColor("#F3F4F6")
-    private val colorKeyBgPressed = Color.parseColor("#C7CCD4")
-    private val colorKeyStroke = Color.parseColor("#D1D5DB")
-    private val colorKeyText = Color.parseColor("#1F2937")
-    private val colorKeyTextDisabled = Color.parseColor("#D1D5DB")
-    private val colorControlBg = Color.parseColor("#ABB1BD")
-    private val colorControlBgPressed = Color.parseColor("#9097A3")
-    private val colorControlText = Color.parseColor("#1F2937")
-    private val colorSpaceBg = Color.WHITE
-    private val colorSpaceText = Color.parseColor("#374151")
-    private val colorReturnBg = Color.parseColor("#ABB1BD")
-    private val colorReturnBgPressed = Color.parseColor("#9097A3")
-    private val colorToneBg = Color.parseColor("#007AFF")
+    private var palette: KeyboardPalette = ThemePalette.keyboard(context)
+    private val colorKeyBg get() = palette.keyBackground
+    private val colorKeyBgDisabled get() = palette.keyBackgroundDisabled
+    private val colorKeyBgPressed get() = palette.keyBackgroundPressed
+    private val colorKeyStroke get() = palette.keyStroke
+    private val colorKeyText get() = palette.keyText
+    private val colorKeyTextDisabled get() = palette.keyTextDisabled
+    private val colorControlBg get() = palette.controlBackground
+    private val colorControlBgPressed get() = palette.controlBackgroundPressed
+    private val colorControlText get() = palette.controlText
+    private val colorSpaceBg get() = palette.spaceBackground
+    private val colorSpaceText get() = palette.spaceText
+    private val colorReturnBg get() = palette.returnBackground
+    private val colorReturnBgPressed get() = palette.returnBackgroundPressed
+    private val colorToneBg get() = palette.toneBackground
 
     init {
-        paintKeyText.color = colorKeyText
+        applyPalette(palette)
         paintKeyText.textAlign = Paint.Align.CENTER
+        paintKeyStroke.style = Paint.Style.STROKE
+        paintKeyStroke.strokeWidth = dp(metrics.keyStrokeWidth)
+        paintCandidateText.textAlign = Paint.Align.CENTER
+        paintControlText.textAlign = Paint.Align.CENTER
+        paintToneText.textAlign = Paint.Align.CENTER
+        // Visible keys are always active, like Apple's dynamic Zhuyin keyboard.
+    }
+
+    fun applySystemTheme() {
+        applyPalette(ThemePalette.keyboard(context))
+        invalidate()
+    }
+
+    private fun applyPalette(next: KeyboardPalette) {
+        palette = next
+        // The IME view can occupy the screen above its bottom-aligned keys.
+        // Paint only the keyboard bounds in onDraw so the editor stays visible.
+        setBackgroundColor(Color.TRANSPARENT)
+        paintKeyText.color = colorKeyText
         paintKeyBg.color = colorKeyBg
         paintKeyBgDisabled.color = colorKeyBgDisabled
         paintKeyStroke.color = colorKeyStroke
-        paintKeyStroke.style = Paint.Style.STROKE
-        paintKeyStroke.strokeWidth = dp(metrics.keyStrokeWidth)
         paintCandidateText.color = colorKeyText
-        paintCandidateText.textAlign = Paint.Align.CENTER
-        paintCandidateBg.color = Color.WHITE
-        paintBar.color = Color.parseColor("#E5E7EB")
+        paintCandidateBg.color = palette.candidateBackground
+        paintBar.color = palette.candidateBar
         paintControlText.color = colorControlText
-        paintControlText.textAlign = Paint.Align.CENTER
         paintToneBg.color = colorToneBg
-        paintToneText.color = Color.WHITE
-        paintToneText.textAlign = Paint.Align.CENTER
-        // Visible keys are always active, like Apple's dynamic Zhuyin keyboard.
+        paintToneText.color = palette.toneText
     }
 
     override fun onAttachedToWindow() {
@@ -301,6 +311,11 @@ class ZhuyinKeyboardView @JvmOverloads constructor(
         return super.onApplyWindowInsets(insets)
     }
 
+    override fun onConfigurationChanged(newConfig: Configuration) {
+        super.onConfigurationChanged(newConfig)
+        applySystemTheme()
+    }
+
     private fun relayout() {
         metrics = KeyboardMetrics.current(context)
         val width = width.toFloat()
@@ -397,7 +412,7 @@ class ZhuyinKeyboardView @JvmOverloads constructor(
         y -= rowSpacing  // 最後一列不加分隔
         y += controlSpacing
 
-        // 控制列: ABC / 注只切換本鍵盤語言；系統輸入法切換由導覽列處理。
+        // 控制列: ABC 切換到系統其他輸入法；注/123 在本鍵盤頁面之間切換。
         controlKeys.clear()
         val (actions, labels) = when {
             mode == Mode.ZHUYIN && showFinalPage -> Pair(
@@ -413,18 +428,6 @@ class ZhuyinKeyboardView @JvmOverloads constructor(
                     returnLabel = returnKeyLabel
                 )
             )
-            mode == Mode.ENGLISH -> if (zhuyinModeAllowed) {
-                Pair(
-                    listOf(ControlAction.NUMBER, ControlAction.TOGGLE_FINALS,
-                        ControlAction.SPACE, ControlAction.RETURN),
-                    listOf("123", "注", "space", returnKeyLabel)
-                )
-            } else {
-                Pair(
-                    listOf(ControlAction.NUMBER, ControlAction.SPACE, ControlAction.RETURN),
-                    listOf("123", "space", returnKeyLabel)
-                )
-            }
             mode in setOf(
                 Mode.NUMBER,
                 Mode.SYMBOL,
@@ -567,11 +570,6 @@ class ZhuyinKeyboardView @JvmOverloads constructor(
                 }
             )
         }
-        Mode.ENGLISH -> listOf(
-            rowSpec(englishLabels(ENGLISH_R1), startSlot = 0f),
-            rowSpec(englishLabels(ENGLISH_R2), startSlot = 0.5f),
-            englishThirdRowSpec()
-        )
         Mode.NUMBER -> listOf(
             rowSpec(IosAuxiliaryLayout.NUMBER_ROWS[0], startSlot = 0f),
             rowSpec(IosAuxiliaryLayout.NUMBER_ROWS[1], startSlot = 0f),
@@ -597,18 +595,6 @@ class ZhuyinKeyboardView @JvmOverloads constructor(
     private fun rowSpec(labels: List<String>, startSlot: Float): KeyRowSpec =
         KeyRowSpec(labels.mapIndexed { index, label -> KeySpec(label, startSlot + index) })
 
-    private fun englishLabels(labels: List<String>): List<String> =
-        if (englishShifted) labels.map { it.uppercase() } else labels
-
-    private fun englishThirdRowSpec(): KeyRowSpec =
-        KeyRowSpec(
-            listOf(KeySpec("⇧", metrics.rowOffset3, metrics.englishFunctionKeyWidth)) +
-                englishLabels(ENGLISH_R3).mapIndexed { index, label ->
-                    KeySpec(label, metrics.englishLetterStartSlot + index)
-                } +
-                listOf(KeySpec("⌫", columnCountForCurrentMode() - metrics.englishFunctionKeyWidth, metrics.englishFunctionKeyWidth))
-        )
-
     private fun auxiliaryThirdRowSpec(labels: List<String>): KeyRowSpec {
         val slots = ZhuyinDynamicLayout.evenlyFilledRow(
             keyCount = labels.size,
@@ -628,7 +614,6 @@ class ZhuyinKeyboardView @JvmOverloads constructor(
 
     private fun columnCountForCurrentMode(): Int = when (mode) {
         Mode.ZHUYIN -> ZhuyinDynamicLayout.COLUMN_COUNT
-        Mode.ENGLISH -> 10
         Mode.NUMBER,
         Mode.SYMBOL,
         Mode.HALF_WIDTH_NUMBER,
@@ -661,29 +646,30 @@ class ZhuyinKeyboardView @JvmOverloads constructor(
                         else if (zhuyinKeys.isNotEmpty()) zhuyinKeys.last().rect.bottom
                         else height.toFloat()
         if (bgBottom > bgTop) {
-            paintRoundRect.color = Color.parseColor("#D1D5DB")
+            paintRoundRect.color = palette.background
             canvas.drawRect(0f, bgTop.coerceAtLeast(0f), width.toFloat(),
                 height.toFloat(), paintRoundRect)
             // 頂部分隔線
             if (bgTop > 0f) {
-                paintRoundRect.color = Color.parseColor("#C8CCD0")
+                paintRoundRect.color = palette.topDivider
                 canvas.drawRect(0f, bgTop, width.toFloat(), bgTop + 1f, paintRoundRect)
             }
         }
 
         // Candidate bar
         if (candidateBarRect.height() > 0) {
-            drawRect(canvas, candidateBarRect, Color.parseColor("#E5E7EB"))
+            drawRect(canvas, candidateBarRect, palette.candidateBar)
             canvas.save()
             canvas.clipRect(candidateBarRect)
             for (cell in candidateCells) {
                 if (!RectF.intersects(candidateBarRect, cell.rect)) continue
                 val bg = if (cell.candidateIndex == selectedCandidateIndex) {
-                    Color.parseColor("#C7CCD4")
+                    palette.candidateSelected
                 } else {
-                    Color.WHITE
+                    palette.candidateBackground
                 }
                 drawRoundRect(canvas, cell.rect, bg, dp(metrics.candidateCornerRadius))
+                paintCandidateText.typeface = KeyboardFont.choose(candidates[cell.candidateIndex], customTypeface, Typeface.DEFAULT)
                 val cy = cell.rect.centerY() -
                     (paintCandidateText.ascent() + paintCandidateText.descent()) / 2
                 canvas.drawText(
@@ -698,7 +684,7 @@ class ZhuyinKeyboardView @JvmOverloads constructor(
                 drawRoundRect(
                     canvas,
                     candidateToggleRect,
-                    Color.parseColor("#D1D5DB"),
+                    palette.candidateToggle,
                     dp(metrics.candidateCornerRadius)
                 )
                 drawCandidateToggleIcon(canvas, candidateToggleRect, candidateExpanded)
@@ -732,6 +718,8 @@ class ZhuyinKeyboardView @JvmOverloads constructor(
                 paintKeyText
             }
             labelPaint.color = colorKeyText
+            labelPaint.typeface = KeyboardFont.choose(k.label, customTypeface,
+                if (k.label.all { it in 'ㄅ'..'ㄩ' || it in TONE_CHARS }) bopomofoTypeface else Typeface.DEFAULT)
             val cy = k.rect.centerY() - (labelPaint.ascent() + labelPaint.descent()) / 2
             if (k.label.isNotEmpty()) {
                 canvas.drawText(k.label, k.rect.centerX(), cy, labelPaint)
@@ -741,10 +729,11 @@ class ZhuyinKeyboardView @JvmOverloads constructor(
 
         // 控制列
         for ((i, k) in controlKeys.withIndex()) {
+            paintControlText.typeface = KeyboardFont.choose(k.label, customTypeface, Typeface.DEFAULT)
             val isPressed = (i == pressedControlIdx)
             when (k.action) {
                 ControlAction.SPACE -> {
-                    val c = if (isPressed) Color.parseColor("#E5E7EB") else colorSpaceBg
+                    val c = if (isPressed) palette.spaceBackgroundPressed else colorSpaceBg
                     drawRoundRect(canvas, k.rect, c, cornerRadius)
                     paintControlText.color = colorSpaceText
                     val cy = k.rect.centerY() - (paintControlText.ascent() + paintControlText.descent()) / 2
@@ -1010,20 +999,10 @@ class ZhuyinKeyboardView @JvmOverloads constructor(
                     }
                 } else {
                     when (key.label) {
-                        "⇧" -> {
-                            englishShifted = !englishShifted
-                            refresh()
-                        }
                         "#+=" -> onSymbolMode?.invoke()
                         "123" -> onNumberMode?.invoke()
                         "⌫" -> { /* handled on DOWN/UP for repeat delete */ }
-                        else -> if (key.label.isNotEmpty()) {
-                            onSymbolChar?.invoke(key.label)
-                            if (mode == Mode.ENGLISH && englishShifted) {
-                                englishShifted = false
-                                refresh()
-                            }
-                        }
+                        else -> if (key.label.isNotEmpty()) onSymbolChar?.invoke(key.label)
                     }
                 }
             }
