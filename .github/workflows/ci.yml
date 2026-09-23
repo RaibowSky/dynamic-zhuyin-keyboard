@@ -32,6 +32,9 @@ jobs:
 
       - name: Set up Android SDK
         uses: android-actions/setup-android@v3
+        with:
+          packages: 'platform-tools platforms;android-36.1 build-tools;36.1.0'
+          log-accepted-android-sdk-licenses: false
 
       - name: Make Gradle wrapper executable
         run: chmod +x gradlew
