@@ -49,7 +49,7 @@ object ZhuyinDictionary {
 
         synchronized(this) {
             syllableMetadata?.let { return it }
-            val bases = source.keySequence()
+            val bases = source.keySequence(maxCodePointLength = 4)
                 .map(::stripTones)
                 .filter { value ->
                     value.length in 1..3 && value.all { ch -> ch in ZHUYIN_CHARS }
@@ -249,12 +249,16 @@ internal class SortedTsvDictionary(source: ByteBuffer) {
         return candidates
     }
 
-    fun keySequence(): Sequence<String> = sequence {
+    fun keySequence(maxCodePointLength: Int = Int.MAX_VALUE): Sequence<String> = sequence {
         var start = dataStart
         while (start < byteCount) {
             val end = findLineEnd(start)
             val tab = findTab(start, end)
-            if (tab > start) yield(decode(start, tab))
+            if (tab > start) {
+                val key = decode(start, tab)
+                if (key.codePointCount(0, key.length) > maxCodePointLength) break
+                yield(key)
+            }
             start = nextLineStart(end)
         }
     }
@@ -282,28 +286,31 @@ internal class SortedTsvDictionary(source: ByteBuffer) {
 
     private fun buildLengthRanges(): List<LengthRange> {
         val result = mutableListOf<LengthRange>()
-        var rangeStart = dataStart
-        var currentLength = -1
         var start = dataStart
         while (start < byteCount) {
             val end = findLineEnd(start)
             val tab = findTab(start, end)
-            if (tab > start) {
-                val key = decode(start, tab)
-                val keyLength = key.codePointCount(0, key.length)
-                if (currentLength < 0) {
-                    currentLength = keyLength
-                    rangeStart = start
-                } else if (keyLength != currentLength) {
-                    result.add(LengthRange(currentLength, rangeStart, start))
-                    currentLength = keyLength
-                    rangeStart = start
+            if (tab <= start) break
+            val key = decode(start, tab)
+            val length = key.codePointCount(0, key.length)
+            // Rows are sorted by length first: binary-search the next length
+            // boundary instead of decoding every row on first interactive use.
+            var low = nextLineStart(end)
+            var high = byteCount
+            while (low < high) {
+                val lineStart = findLineStart(low + (high - low) / 2, low)
+                val lineEnd = findLineEnd(lineStart)
+                val lineTab = findTab(lineStart, lineEnd)
+                check(lineTab > lineStart) { "Malformed dictionary row" }
+                val middleKey = decode(lineStart, lineTab)
+                if (middleKey.codePointCount(0, middleKey.length) <= length) {
+                    low = nextLineStart(lineEnd)
+                } else {
+                    high = lineStart
                 }
             }
-            start = nextLineStart(end)
-        }
-        if (currentLength >= 0) {
-            result.add(LengthRange(currentLength, rangeStart, byteCount))
+            result.add(LengthRange(length, start, low))
+            start = low
         }
         return result
     }

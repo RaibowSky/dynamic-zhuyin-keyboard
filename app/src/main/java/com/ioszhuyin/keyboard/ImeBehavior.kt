@@ -14,7 +14,7 @@ internal enum class EditorActionPlan(
 
 internal enum class EditorKeyboardMode {
     ZHUYIN,
-    ENGLISH,
+    EXTERNAL_ASCII,
     NUMBER
 }
 
@@ -68,7 +68,7 @@ internal object ImeBehavior {
         val forceAscii = imeOptions != null &&
             (imeOptions and EditorInfo.IME_FLAG_FORCE_ASCII) != 0
         if (inputType == null) {
-            return if (forceAscii) EditorKeyboardMode.ENGLISH else EditorKeyboardMode.ZHUYIN
+            return if (forceAscii) EditorKeyboardMode.EXTERNAL_ASCII else EditorKeyboardMode.ZHUYIN
         }
         val inputClass = inputType and InputType.TYPE_MASK_CLASS
         val variation = inputType and InputType.TYPE_MASK_VARIATION
@@ -78,7 +78,7 @@ internal object ImeBehavior {
             InputType.TYPE_CLASS_DATETIME,
             InputType.TYPE_CLASS_PHONE -> return EditorKeyboardMode.NUMBER
         }
-        if (forceAscii) return EditorKeyboardMode.ENGLISH
+        if (forceAscii) return EditorKeyboardMode.EXTERNAL_ASCII
         if (
             inputClass == InputType.TYPE_CLASS_TEXT &&
             variation in setOf(
@@ -89,7 +89,7 @@ internal object ImeBehavior {
                 InputType.TYPE_TEXT_VARIATION_WEB_EMAIL_ADDRESS
             )
         ) {
-            return EditorKeyboardMode.ENGLISH
+            return EditorKeyboardMode.EXTERNAL_ASCII
         }
         return EditorKeyboardMode.ZHUYIN
     }
@@ -142,11 +142,13 @@ internal object ExternalImeDelegation {
      * never left without a path to type ASCII.
      */
     fun delegate(
+        trySwitchToPreviousIme: () -> Boolean = { false },
         trySwitchToNextIme: () -> Boolean,
         openImePicker: () -> Boolean
     ): Outcome = when {
-        trySwitchToNextIme() -> Outcome.SWITCHED
-        openImePicker() -> Outcome.OPENED_PICKER
+        runCatching(trySwitchToPreviousIme).getOrDefault(false) -> Outcome.SWITCHED
+        runCatching(trySwitchToNextIme).getOrDefault(false) -> Outcome.SWITCHED
+        runCatching(openImePicker).getOrDefault(false) -> Outcome.OPENED_PICKER
         else -> Outcome.FAILED
     }
 }

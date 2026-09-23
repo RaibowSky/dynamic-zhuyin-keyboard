@@ -113,6 +113,7 @@ class MainActivity : AppCompatActivity() {
         if (resultCode != RESULT_OK) return
         val uri = data?.data ?: return
         when (requestCode) {
+            REQUEST_FONT -> importFont(uri)
             REQUEST_IMPORT -> importDictionary(uri)
             REQUEST_EXPORT_DICTIONARY -> exportDictionary(uri, includeLearning = false)
             REQUEST_EXPORT_WITH_LEARNING -> exportDictionary(uri, includeLearning = true)
@@ -154,6 +155,20 @@ class MainActivity : AppCompatActivity() {
                 imm.showInputMethodPicker()
             }
         )
+
+        val fontRow = row()
+        fontRow.addView(button("匯入鍵盤字型", palette.primary) {
+            startActivityForResult(Intent(Intent.ACTION_OPEN_DOCUMENT).apply {
+                addCategory(Intent.CATEGORY_OPENABLE)
+                type = "*/*"
+            }, REQUEST_FONT)
+        }, rowWeight())
+        fontRow.addView(button("還原預設字型", palette.neutral) {
+            runDictionaryTask("還原失敗", operation = { KeyboardFont.reset(this) }) {
+                toast("已還原預設字型")
+            }
+        }, rowWeight())
+        root.addView(fontRow)
 
         statusText = TextView(this).apply {
             textSize = 14f
@@ -365,6 +380,36 @@ class MainActivity : AppCompatActivity() {
             selectedEntry = null
             statusText.text = "使用者字典：載入失敗"
             toast(it.message ?: "載入字典失敗")
+        }
+    }
+
+    private fun importFont(uri: Uri) {
+        runDictionaryTask("字型匯入失敗", operation = { KeyboardFont.stage(this, uri) }) { staged ->
+            val preview = TextView(this).apply {
+                text = KeyboardFont.preview(this@MainActivity, android.graphics.Typeface.createFromFile(staged))
+                textSize = 24f
+                setPadding(dp(20), dp(16), dp(20), dp(16))
+            }
+            val dialog = AlertDialog.Builder(this)
+                .setTitle("鍵盤字型預覽")
+                .setMessage("缺少的字元會使用內建注音或系統字型。套用後不需保留來源檔案。")
+                .setView(preview)
+                .setPositiveButton("套用", null)
+                .setNegativeButton("取消", null)
+                .create()
+            dialog.setOnDismissListener { staged.delete() }
+            dialog.setOnShowListener {
+                dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener {
+                    dialog.getButton(AlertDialog.BUTTON_POSITIVE).isEnabled = false
+                    // Keep the staging file alive until the background copy finishes.
+                    dialog.setOnDismissListener(null)
+                    runDictionaryTask("字型套用失敗", operation = {
+                        try { KeyboardFont.apply(this, staged) } finally { staged.delete() }
+                    }) { toast("已套用鍵盤字型") }
+                    dialog.dismiss()
+                }
+            }
+            dialog.show()
         }
     }
 
@@ -831,7 +876,13 @@ class MainActivity : AppCompatActivity() {
         if (::palette.isInitialized && next == palette) return
         palette = next
         if (::store.isInitialized) {
+            val previousReading = if (::zhuyinInput.isInitialized) zhuyinInput.text.toString() else ""
+            val previousWord = if (::wordInput.isInitialized) wordInput.text.toString() else ""
+            val previousSearch = if (::searchInput.isInitialized) searchInput.text.toString() else ""
             buildLayout()
+            zhuyinInput.setText(previousReading)
+            wordInput.setText(previousWord)
+            searchInput.setText(previousSearch)
             refreshList()
             if (::learningStatusText.isInitialized && ::learningToggleButton.isInitialized) {
                 refreshLearningStatus()
@@ -843,6 +894,7 @@ class MainActivity : AppCompatActivity() {
         (value * resources.displayMetrics.density).toInt()
 
     companion object {
+        private const val REQUEST_FONT = 1005
         private const val REQUEST_IMPORT = 1001
         private const val REQUEST_EXPORT_DICTIONARY = 1002
         private const val REQUEST_EXPORT_WITH_LEARNING = 1004

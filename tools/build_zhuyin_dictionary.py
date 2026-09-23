@@ -9,17 +9,14 @@ from pathlib import Path
 MCBOPOMOFO_PHRASE_OCC_SHA256 = (
     "0fc51c5245a8820e1003e3fa3fb2759b0d1b502a71da81bbfa265e9ac6c9fb5a"
 )
-# The CC-CEDICT URL serves MDBG's latest release and is not immutable. The
-# archive checksum below pins the accepted rebuild input. It is newer than, and
-# must not be presented as the source snapshot of, the currently bundled asset;
-# see NOTICE.md for that provenance limitation.
+# Exact source archive is retained in tools/data for offline reproduction.
 CC_CEDICT_SOURCE_URL = (
     "https://www.mdbg.net/chinese/export/cedict/"
     "cedict_1_0_ts_utf-8_mdbg.txt.gz"
 )
-CC_CEDICT_RETRIEVED_DATE = "2026-07-15"
+CC_CEDICT_RETRIEVED_DATE = "2026-09-23"
 CC_CEDICT_ARCHIVE_SHA256 = (
-    "33d79ec1cc91fd1bc76fe7e590723d474cfe6ab364648eef9b7b52677e897d87"
+    "98c1a804e9ecf103494c85c18300dcd792acced9d238350ebcd84297e77a2c30"
 )
 
 
@@ -221,7 +218,7 @@ def main() -> None:
     parser = argparse.ArgumentParser(
         description="Build the pinned Zhuyin dictionary rebuild baseline"
     )
-    parser.add_argument("--source", type=Path, default=root / "cedict.txt.gz")
+    parser.add_argument("--source", type=Path, default=root / "tools" / "data" / "cedict.txt.gz")
     parser.add_argument(
         "--target",
         type=Path,
@@ -244,6 +241,7 @@ def main() -> None:
     frequency_license = root / "tools" / "data" / "McBopomofo_LICENSE.txt"
     verify_source(source, CC_CEDICT_ARCHIVE_SHA256, "CC-CEDICT archive")
     frequencies = load_phrase_frequencies(frequency_source)
+    verify_source(frequency_license, "9cc138135c5fbfba9057868dc3055d154bbc3c936eea5e24d8a9dbb477a7efde", "McBopomofo license")
     mcbopomofo_license = frequency_license.read_text(encoding="utf-8").strip()
 
     entries: dict[str, list[str]] = {}

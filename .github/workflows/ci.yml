@@ -1,5 +1,8 @@
 name: CI
 
+permissions:
+  contents: read
+
 on:
   push:
     branches: [main]
@@ -32,6 +35,9 @@ jobs:
 
       - name: Make Gradle wrapper executable
         run: chmod +x gradlew
+
+      - name: Verify reproducible dictionary
+        run: python3 tools/rebuild_dictionary.py --check
 
       - name: Run unit tests, lint, and debug assemble
         run: ./gradlew testDebugUnitTest lintDebug assembleDebug --stacktrace --no-daemon

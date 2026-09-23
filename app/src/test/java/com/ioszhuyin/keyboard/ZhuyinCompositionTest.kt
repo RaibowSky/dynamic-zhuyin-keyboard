@@ -119,13 +119,11 @@ class ZhuyinCompositionTest {
         )
 
         assertNotNull(match)
-        assertEquals("ㄋㄧˇㄐㄧㄚˉ", match?.reading)
-        assertEquals(listOf("你家", "你"), match?.candidates)
-        assertEquals(
-            listOf("ㄋㄧˇㄐㄧㄚˉ".length, "ㄋㄧˇ".length),
-            match?.choices?.map { it.end }
-        )
-        assertEquals("ㄖㄣˊ", raw.substring(match?.end ?: 0))
+        assertEquals(raw, match?.reading)
+        assertEquals("你家人", match?.candidates?.first())
+        assertEquals(raw.length, match?.choices?.first()?.end)
+        assertEquals("你", match?.choices?.get(1)?.text)
+        assertEquals("ㄐㄧㄚˉㄖㄣˊ", raw.substring(match!!.choices[1].end))
     }
 
     @Test
@@ -209,7 +207,7 @@ class ZhuyinCompositionTest {
     }
 
     @Test
-    fun longTonedInputFallsBackToLongestExactPrefix() {
+    fun longTonedInputCombinesPhraseWithRemainingWords() {
         val raw = "abcde"
         val segments = raw.indices.map { index ->
             ZhuyinSegment(
@@ -232,10 +230,10 @@ class ZhuyinCompositionTest {
             }
         }
 
-        assertEquals("ab", match?.reading)
-        assertEquals(listOf("prefix", "A"), match?.candidates)
-        assertEquals(listOf(2, 1), match?.choices?.map { it.end })
-        assertEquals("cde", raw.substring(match?.end ?: 0))
+        assertEquals(raw, match?.reading)
+        assertEquals("prefixCDE", match?.candidates?.first())
+        assertEquals(listOf(5, 1), match?.choices?.take(2)?.map { it.end })
+        assertEquals("", raw.substring(match?.end ?: 0))
     }
 
     @Test

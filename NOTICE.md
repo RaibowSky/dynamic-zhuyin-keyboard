@@ -18,7 +18,7 @@ The file `app/src/main/assets/zhuyin_cedict.tsv` is generated from CC-CEDICT.
   (CC BY-SA 4.0)
 - License URL: https://creativecommons.org/licenses/by-sa/4.0/
 - Local conversion script: `tools/build_zhuyin_dictionary.py`
-- Bundled asset SHA-256: `78d4ed4b7bb695203e3a2c291921180f503e88498f31b705edb1e0ac80454aec`
+- Bundled asset SHA-256: `df1664881c7417be73d430ee90915ba13d70aa67f19632a70d170bdeefb5ead9`
 
 Transformation performed:
 
@@ -32,19 +32,12 @@ Transformation performed:
 The generated file is a derived data asset and should continue to carry
 CC-CEDICT attribution and compatible license handling when redistributed.
 
-The exact CC-CEDICT archive used for the currently bundled asset was not
-retained, so its upstream release and source-archive checksum cannot be stated
-or reproduced byte-for-byte. The conversion script now pins a newer rebuild
-baseline downloaded from MDBG on 2026-07-15 with SHA-256
-`33d79ec1cc91fd1bc76fe7e590723d474cfe6ab364648eef9b7b52677e897d87`.
-That verified baseline produces a different generated asset and is not being
-claimed as the source snapshot of the asset currently in the repository. The
-MDBG download URL points to its latest release and is mutable; the checksum is
-the identity of the accepted rebuild input.
-To avoid accidentally replacing the current asset with that different
-baseline, the conversion script writes to `build/dictionary-rebuild/` by
-default. Replacing the bundled target requires explicit `--target` and
-`--license-file` paths and corresponding notice updates.
+The accepted CC-CEDICT snapshot was retrieved from MDBG on 2026-09-23.
+The exact archive is retained at `tools/data/cedict.txt.gz` (SHA-256
+`98c1a804e9ecf103494c85c18300dcd792acced9d238350ebcd84297e77a2c30`). The mutable MDBG URL is provenance only;
+rebuilds never download latest data. Run `python tools/rebuild_dictionary.py --check`
+to reproduce and compare the bundled asset and license notice byte-for-byte.
+All dictionary inputs are retained and checksum-verified.
 
 ### McBopomofo phrase readings and aggregate frequency data
 

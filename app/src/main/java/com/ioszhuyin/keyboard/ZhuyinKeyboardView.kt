@@ -37,6 +37,8 @@ class ZhuyinKeyboardView @JvmOverloads constructor(
 ) : View(context, attrs) {
 
     var bopomofoTypeface: Typeface = Typeface.create("sans-serif", Typeface.NORMAL)  // 預設值, 外部可覆寫
+    var customTypeface: Typeface? = null
+        set(value) { field = value; refresh() }
     private var metrics: KeyboardLayoutMetrics = KeyboardMetrics.current(context)
     private val metricsPrefs: SharedPreferences = KeyboardMetrics.prefs(context)
     private val metricsListener =
@@ -197,7 +199,9 @@ class ZhuyinKeyboardView @JvmOverloads constructor(
 
     private fun applyPalette(next: KeyboardPalette) {
         palette = next
-        setBackgroundColor(palette.background)
+        // The IME view can occupy the screen above its bottom-aligned keys.
+        // Paint only the keyboard bounds in onDraw so the editor stays visible.
+        setBackgroundColor(Color.TRANSPARENT)
         paintKeyText.color = colorKeyText
         paintKeyBg.color = colorKeyBg
         paintKeyBgDisabled.color = colorKeyBgDisabled
@@ -665,6 +669,7 @@ class ZhuyinKeyboardView @JvmOverloads constructor(
                     palette.candidateBackground
                 }
                 drawRoundRect(canvas, cell.rect, bg, dp(metrics.candidateCornerRadius))
+                paintCandidateText.typeface = KeyboardFont.choose(candidates[cell.candidateIndex], customTypeface, Typeface.DEFAULT)
                 val cy = cell.rect.centerY() -
                     (paintCandidateText.ascent() + paintCandidateText.descent()) / 2
                 canvas.drawText(
@@ -713,6 +718,8 @@ class ZhuyinKeyboardView @JvmOverloads constructor(
                 paintKeyText
             }
             labelPaint.color = colorKeyText
+            labelPaint.typeface = KeyboardFont.choose(k.label, customTypeface,
+                if (k.label.all { it in 'ㄅ'..'ㄩ' || it in TONE_CHARS }) bopomofoTypeface else Typeface.DEFAULT)
             val cy = k.rect.centerY() - (labelPaint.ascent() + labelPaint.descent()) / 2
             if (k.label.isNotEmpty()) {
                 canvas.drawText(k.label, k.rect.centerX(), cy, labelPaint)
@@ -722,6 +729,7 @@ class ZhuyinKeyboardView @JvmOverloads constructor(
 
         // 控制列
         for ((i, k) in controlKeys.withIndex()) {
+            paintControlText.typeface = KeyboardFont.choose(k.label, customTypeface, Typeface.DEFAULT)
             val isPressed = (i == pressedControlIdx)
             when (k.action) {
                 ControlAction.SPACE -> {

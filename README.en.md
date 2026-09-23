@@ -23,9 +23,10 @@ movement while offering candidates from a bundled on-device dictionary.
 
 - Dynamic Zhuyin keyboard with stable, non-jumping key positions.
 - Zhuyin candidate lookup from a locally generated dictionary asset.
-- Continuous multi-syllable composition with phrase candidates, per-syllable
-  sentence fallback, and 一/不 tone-sandhi recovery.
-- Multiple input modes: Zhuyin, English, numbers, and symbols.
+- Continuous sentence decoding combines phrases and characters, preserves 一/不
+  tone sandhi, and keeps the suffix when correcting the leading character.
+- Zhuyin, number and symbol pages; ABC switches to another enabled system IME.
+- System light/dark themes and local TTF/OTF import with preview and default reset.
 - On-device candidate learning that ranks frequently used characters and words
   higher over time.
 - A user dictionary with manual entries, learning pause/clear, and import/export.
@@ -34,12 +35,13 @@ movement while offering candidates from a bundled on-device dictionary.
 
 ## Installation
 
-A Build Week demo APK is available on the
-[Releases](https://github.com/RaibowSky/dynamic-zhuyin-keyboard/releases) page.
-That build is a historical debug demo; stable releases will be published through
-a separate release process (see Roadmap below).
+Download the signed APK and checksum from [Releases](https://github.com/RaibowSky/dynamic-zhuyin-keyboard/releases/latest).
+Requires Android 7.0+ and another enabled system keyboard for English input.
+The old Build Week debug build has a different signature: export your dictionary,
+uninstall the demo, then install stable. Future stable builds use the same signing
+identity and support normal updates. See [release/version policy](docs/RELEASING.md).
 
-You can also build from source (see Build and install below).
+You can also build from source:
 
 ## Build and install
 
@@ -77,27 +79,23 @@ After installation, open the Dynamic Zhuyin Keyboard app:
 
 ## Screenshots
 
-> **To be added**: a screenshot (or short GIF) of the keyboard and candidate row
-> taken on a real device.
+Actual Android emulator screenshots:
+
+![Light keyboard and candidates](docs/images/keyboard-light.png)
+![Dark keyboard and candidates](docs/images/keyboard-dark.png)
+
+![Font import preview](docs/images/font-preview.png)
 
 ## Roadmap and known limitations
 
-The project is still early-stage and does not yet have a stable release process.
-Planned or in-progress items include:
-
-- System light/dark theme (issue [#1](https://github.com/RaibowSky/dynamic-zhuyin-keyboard/issues/1)).
-- Reproducible dictionary build (issue [#2](https://github.com/RaibowSky/dynamic-zhuyin-keyboard/issues/2)).
-- Signing, versioning, and stable APK releases (issue [#3](https://github.com/RaibowSky/dynamic-zhuyin-keyboard/issues/3)).
-- Long-term application ID (issue [#7](https://github.com/RaibowSky/dynamic-zhuyin-keyboard/issues/7)).
-- Configurable keyboard fonts with local font import (issue [#8](https://github.com/RaibowSky/dynamic-zhuyin-keyboard/issues/8)).
-- Delegating English input to an external IME (issue [#9](https://github.com/RaibowSky/dynamic-zhuyin-keyboard/issues/9)).
-- Continuous Zhuyin sentence decoding (issue [#10](https://github.com/RaibowSky/dynamic-zhuyin-keyboard/issues/10)).
-- Removing the first-prefix-lookup full-dictionary scan (issue [#11](https://github.com/RaibowSky/dynamic-zhuyin-keyboard/issues/11)).
-
-Known limitations:
-
-- Only a debug APK is provided; no stable signed release exists yet.
-- System light/dark theme is not yet applied to every screen.
+- Offline sentence ranking uses frequency order, word length and local preferences;
+  no network model or next-word prediction after committing a sentence.
+- Up to nine paths per syllable position and 16 syllables per dictionary edge;
+  sentence length has no three-syllable ceiling.
+- TTF/OTF import supports files up to 20 MB, with bundled/system glyph fallbacks.
+  A system-font catalogue remains exploratory.
+- Continued OEM, older Android and physical-device coverage needs community reports.
+- See [Issues](https://github.com/RaibowSky/dynamic-zhuyin-keyboard/issues) and [CHANGELOG](CHANGELOG.md).
 
 ## Privacy
 

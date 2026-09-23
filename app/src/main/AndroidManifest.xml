@@ -9,10 +9,11 @@
         android:fullBackupContent="@xml/backup_rules"
         android:label="@string/app_name"
         android:icon="@drawable/ic_launcher"
-        android:theme="@style/Theme.IOSKeyboard">
+        android:theme="@style/Theme.DynamicZhuyin">
 
         <activity
             android:name=".MainActivity"
+            android:configChanges="uiMode"
             android:label="@string/app_name"
             android:exported="true">
             <intent-filter>

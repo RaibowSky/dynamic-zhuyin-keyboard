@@ -34,8 +34,6 @@ internal data class CandidateMatch(
 
 internal object ZhuyinComposition {
     private const val MAX_SYLLABLE_LENGTH = 3
-    private const val MAX_COMPOSED_SYLLABLES = 3
-    private const val MAX_CHOICES_PER_SYLLABLE = 3
     private const val MAX_FALLBACK_CANDIDATES = 9
     private val toneChars = setOf('ˉ', '˙', 'ˊ', 'ˇ', 'ˋ')
 
@@ -108,11 +106,27 @@ internal object ZhuyinComposition {
             )
         }
 
-        // Prefer an explicitly prioritized multi-syllable prefix (currently a
-        // user-dictionary phrase) over a synthesized character-by-character
-        // candidate for the entire buffer. Generic dictionary-prefix fallback
-        // stays below synthesis; every multi-syllable result is mixed with
-        // leading-character alternatives before it is shown.
+        val composedCandidates = composeSyllableCandidates(
+            raw = raw,
+            segments = segments,
+            preferredCandidates = preferredPrefixCandidatesForReading,
+            candidatesForReading = candidatesForReading
+        )
+        if (composedCandidates.isNotEmpty()) {
+            return withLeadingCharacterAlternatives(
+                match = CandidateMatch(
+                    reading = raw,
+                    candidates = composedCandidates,
+                    start = 0,
+                    end = raw.length
+                ),
+                raw = raw,
+                segments = segments,
+                candidatesForReading = candidatesForReading
+            )
+        }
+
+        // When a complete path is unavailable, preserve manual prefix correction.
         val phrasePrefixEnds = segments
             .drop(1)
             .map { it.end }
@@ -137,25 +151,6 @@ internal object ZhuyinComposition {
             }
         }
 
-        val composedCandidates = composeSyllableCandidates(
-            raw = raw,
-            segments = segments,
-            candidatesForReading = candidatesForReading
-        )
-        if (composedCandidates.isNotEmpty()) {
-            return withLeadingCharacterAlternatives(
-                match = CandidateMatch(
-                    reading = raw,
-                    candidates = composedCandidates,
-                    start = 0,
-                    end = raw.length
-                ),
-                raw = raw,
-                segments = segments,
-                candidatesForReading = candidatesForReading
-            )
-        }
-
         if (segments.any { !it.hasTone }) {
             val prefixCandidates = prioritizePrefixCandidates(
                 candidates = prefixCandidatesForReading(raw),
@@ -176,6 +171,13 @@ internal object ZhuyinComposition {
                     segments = segments,
                     candidatesForReading = candidatesForReading
                 )
+            }
+            val partial = composeSyllableCandidates(raw, segments,
+                preferredPrefixCandidatesForReading, candidatesForReading, prefixCandidatesForReading)
+            if (partial.isNotEmpty()) {
+                return withLeadingCharacterAlternatives(
+                    CandidateMatch(raw, partial, 0, raw.length, isProvisional = true),
+                    raw, segments, candidatesForReading)
             }
         }
 
@@ -260,57 +262,56 @@ internal object ZhuyinComposition {
             .map { it.value }
     }
 
+    // A bounded beam at each syllable boundary; input length is not capped.
+    // Candidate order already incorporates bundled frequency and allowed learning.
     private fun composeSyllableCandidates(
         raw: String,
         segments: List<ZhuyinSegment>,
-        candidatesForReading: (String) -> List<String>
+        preferredCandidates: (String) -> List<String>,
+        candidatesForReading: (String) -> List<String>,
+        partialCandidates: (String) -> List<String> = { emptyList() }
     ): List<String> {
-        if (
-            segments.size < 2 ||
-            segments.size > MAX_COMPOSED_SYLLABLES ||
-            segments.firstOrNull()?.start != 0 ||
-            segments.lastOrNull()?.end != raw.length ||
-            segments.any { !it.hasTone }
-        ) {
-            return emptyList()
-        }
-
-        data class RankedCombination(val text: String, val rank: Int, val order: Int)
-
-        var nextOrder = 0
-        var combinations = listOf(RankedCombination("", rank = 0, order = nextOrder++))
-        segments.forEachIndexed { index, segment ->
-            val readings = linkedSetOf<String>()
-            toneSandhiReading(segment, segments.getOrNull(index + 1))?.let(readings::add)
-            readings.add(segment.text)
-
-            val choices = linkedSetOf<String>()
-            readings.forEach { reading ->
-                candidatesForReading(reading)
-                    .asSequence()
-                    .filter(::isSingleCodePoint)
-                    .take(MAX_CHOICES_PER_SYLLABLE)
-                    .forEach(choices::add)
-            }
-            if (choices.isEmpty()) return emptyList()
-
-            combinations = combinations
-                .asSequence()
-                .flatMap { prefix ->
-                    choices.asSequence().mapIndexed { choiceIndex, choice ->
-                        RankedCombination(
-                            text = prefix.text + choice,
-                            rank = prefix.rank + choiceIndex,
-                            order = nextOrder++
-                        )
-                    }
-                }
-                .sortedWith(compareBy<RankedCombination> { it.rank }.thenBy { it.order })
-                .distinctBy { it.text }
+        if (segments.size < 2 || segments.first().start != 0 ||
+            segments.last().end != raw.length || segments.dropLast(1).any { !it.hasTone }) return emptyList()
+        data class Path(val text: String, val cost: Int)
+        val beams = Array(segments.size + 1) { mutableListOf<Path>() }
+        beams[0].add(Path("", 0))
+        val order = compareBy<Path> { it.cost }.thenBy { it.text }
+        for (start in segments.indices) {
+            if (beams[start].isEmpty()) continue
+            val prefixes = beams[start].sortedWith(order).distinctBy { it.text }
                 .take(MAX_FALLBACK_CANDIDATES)
-                .toList()
+            for (end in start + 1..minOf(segments.size, start + 16)) {
+                val span = end - start
+                val reading = raw.substring(segments[start].start, segments[end - 1].end)
+                val normalized = (start until end).joinToString("") { index ->
+                    toneSandhiReading(segments[index], segments.getOrNull(index + 1))
+                        ?: segments[index].text
+                }
+                val preferred = preferredCandidates(reading).toSet()
+                val incomplete = end == segments.size && !segments.last().hasTone
+                val normalizedChoices = if (incomplete) partialCandidates(reading) else candidatesForReading(normalized)
+                val choices = (normalizedChoices +
+                    if (normalized != reading) candidatesForReading(reading) else emptyList())
+                    .distinct().filter { span > 1 || isSingleCodePoint(it) }.take(4)
+                for ((rank, choice) in choices.withIndex()) {
+                    // Fewer phrase boundaries beat naive character concatenation.
+                    // Bonuses are bounded, so one learned word cannot dominate a sentence.
+                    val sandhiPenalty = if (normalized != reading && choice !in normalizedChoices && choice !in preferred) 16 else 0
+                    val edgeCost = 12 + rank * 2 - minOf(span, 8) * 2 + sandhiPenalty -
+                        (if (choice in preferred) 6 else 0)
+                    for (prefix in prefixes) beams[end].add(Path(prefix.text + choice, prefix.cost + edgeCost))
+                }
+                if (beams[end].size > MAX_FALLBACK_CANDIDATES) {
+                    val best = beams[end].sortedWith(order).distinctBy { it.text }
+                        .take(MAX_FALLBACK_CANDIDATES)
+                    beams[end].clear()
+                    beams[end].addAll(best)
+                }
+            }
+            beams[start].clear()
         }
-        return combinations.map { it.text }
+        return beams.last().sortedWith(order).distinctBy { it.text }.map { it.text }
     }
 
     private fun toneSandhiReading(

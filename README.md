@@ -20,20 +20,21 @@
 
 - 動態注音鍵盤：按鍵位置固定，輸入時不跳位。
 - 注音候選查詢：使用本地產生的注音候選字典。
-- 連續多音節組字：支援完整片語候選、逐音節組句保底，以及「一／不」變調還原。
-- 多種輸入模式：注音、英文、數字、符號。
+- 連續整句解碼：組合多個已知詞與單字，支援「一／不」變調與保留後綴的首字修正。
+- 注音、數字與符號頁；「ABC」切換到已啟用的外部輸入法。
+- 系統淺色／深色主題、可預覽的本機 TTF／OTF 字型匯入與預設字型還原。
 - 本機候選學習：常用的字／詞會隨著使用往前排。
 - 使用者詞典：支援手動詞彙、暫停／清除學習、匯入／匯出。
 - 一聲與空白鍵邏輯合併，不另外顯示一聲按鍵。
 
 ## 安裝
 
-目前提供一個 Build Week 展示用的 debug APK，見
-[Releases](https://github.com/RaibowSky/dynamic-zhuyin-keyboard/releases)。
-該版本是歷史展示用建置，後續穩定版會以獨立 release 流程發布（見下方
-〈Roadmap 與已知限制〉）。
+正式簽署 APK 與 checksum 請見 [Releases](https://github.com/RaibowSky/dynamic-zhuyin-keyboard/releases/latest)。
+Android 7.0 以上可安裝；英文輸入需要另一個已啟用的系統輸入法。
+舊 Build Week debug 版簽章不同，轉換前請先匯出字典，再移除舊版、安裝正式版。
+後續正式版沿用同一簽章，可直接更新。[發版與版本規則](docs/RELEASING.md)。
 
-也可以從原始碼自行建置（見下方〈建置與安裝〉）。
+也可以從原始碼自行建置：
 
 ## 建置與安裝
 
@@ -70,25 +71,20 @@ app/build/outputs/apk/debug/app-debug.apk
 
 ## 螢幕截圖
 
-> **待補**：此處將放一張實際裝置上的鍵盤與候選列截圖（或短 GIF）。
+Android 模擬器實際執行畫面：
+
+![淺色鍵盤與候選列](docs/images/keyboard-light.png)
+![深色鍵盤與候選列](docs/images/keyboard-dark.png)
+
+![字型匯入預覽](docs/images/font-preview.png)
 
 ## Roadmap 與已知限制
 
-本專案仍在早期階段，尚未建立穩定版發布流程。已規劃或進行中的項目包括：
-
-- 系統淺色／深色主題自動切換（issue [#1](https://github.com/RaibowSky/dynamic-zhuyin-keyboard/issues/1)）。
-- 字典建置可重現性（issue [#2](https://github.com/RaibowSky/dynamic-zhuyin-keyboard/issues/2)）。
-- 簽署、版本與穩定 APK 發布（issue [#3](https://github.com/RaibowSky/dynamic-zhuyin-keyboard/issues/3)）。
-- 長期應用程式 ID（issue [#7](https://github.com/RaibowSky/dynamic-zhuyin-keyboard/issues/7)）。
-- 可設定的鍵盤字型與本機字型匯入（issue [#8](https://github.com/RaibowSky/dynamic-zhuyin-keyboard/issues/8)）。
-- 英文輸入委派給外部 IME（issue [#9](https://github.com/RaibowSky/dynamic-zhuyin-keyboard/issues/9)）。
-- 連續注音整句解碼（issue [#10](https://github.com/RaibowSky/dynamic-zhuyin-keyboard/issues/10)）。
-- 消除首次前綴查詢的全字典掃描（issue [#11](https://github.com/RaibowSky/dynamic-zhuyin-keyboard/issues/11)）。
-
-已知限制：
-
-- 目前僅提供 debug APK，尚未提供穩定簽署版。
-- 系統淺色／深色主題尚未完整套用到所有畫面。
+- 整句排序採用離線詞頻順序、詞長與本機偏好，沒有網路模型或提交後的下一詞預測。
+- 每個音節位置保留最多 9 條解碼路徑，詞邊最多 16 音節；整句長度沒有 3 音節限制。
+- 自訂字型支援 TTF／OTF（上限 20 MB）；缺字會退回內建／系統字型。系統字型清單仍待研究。
+- 裝置廠牌、較舊 Android 版本與實體裝置的持續測試仍需要回報。
+- 目前進度請見 [Issues](https://github.com/RaibowSky/dynamic-zhuyin-keyboard/issues) 與 [CHANGELOG](CHANGELOG.md)。
 
 ## 隱私
 

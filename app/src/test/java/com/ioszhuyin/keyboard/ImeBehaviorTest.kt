@@ -199,9 +199,9 @@ class ImeBehaviorTest {
             InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_WEB_PASSWORD
 
         assertEquals(EditorKeyboardMode.ZHUYIN, ImeBehavior.keyboardMode(normalText))
-        assertEquals(EditorKeyboardMode.ENGLISH, ImeBehavior.keyboardMode(password))
-        assertEquals(EditorKeyboardMode.ENGLISH, ImeBehavior.keyboardMode(visiblePassword))
-        assertEquals(EditorKeyboardMode.ENGLISH, ImeBehavior.keyboardMode(webPassword))
+        assertEquals(EditorKeyboardMode.EXTERNAL_ASCII, ImeBehavior.keyboardMode(password))
+        assertEquals(EditorKeyboardMode.EXTERNAL_ASCII, ImeBehavior.keyboardMode(visiblePassword))
+        assertEquals(EditorKeyboardMode.EXTERNAL_ASCII, ImeBehavior.keyboardMode(webPassword))
         assertEquals(EditorKeyboardMode.ZHUYIN, ImeBehavior.keyboardMode(null))
     }
 
@@ -231,15 +231,15 @@ class ImeBehaviorTest {
             InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_WEB_EMAIL_ADDRESS
         val uri = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_URI
 
-        assertEquals(EditorKeyboardMode.ENGLISH, ImeBehavior.keyboardMode(email))
-        assertEquals(EditorKeyboardMode.ENGLISH, ImeBehavior.keyboardMode(webEmail))
+        assertEquals(EditorKeyboardMode.EXTERNAL_ASCII, ImeBehavior.keyboardMode(email))
+        assertEquals(EditorKeyboardMode.EXTERNAL_ASCII, ImeBehavior.keyboardMode(webEmail))
         assertEquals(EditorKeyboardMode.ZHUYIN, ImeBehavior.keyboardMode(uri))
         assertEquals(
             EditorKeyboardMode.ZHUYIN,
             ImeBehavior.keyboardMode(uri, EditorInfo.IME_ACTION_SEARCH)
         )
         assertEquals(
-            EditorKeyboardMode.ENGLISH,
+            EditorKeyboardMode.EXTERNAL_ASCII,
             ImeBehavior.keyboardMode(uri, EditorInfo.IME_FLAG_FORCE_ASCII)
         )
     }
@@ -250,11 +250,11 @@ class ImeBehaviorTest {
         val number = InputType.TYPE_CLASS_NUMBER or InputType.TYPE_NUMBER_VARIATION_NORMAL
 
         assertEquals(
-            EditorKeyboardMode.ENGLISH,
+            EditorKeyboardMode.EXTERNAL_ASCII,
             ImeBehavior.keyboardMode(normalText, EditorInfo.IME_FLAG_FORCE_ASCII)
         )
         assertEquals(
-            EditorKeyboardMode.ENGLISH,
+            EditorKeyboardMode.EXTERNAL_ASCII,
             ImeBehavior.keyboardMode(null, EditorInfo.IME_FLAG_FORCE_ASCII)
         )
         assertEquals(

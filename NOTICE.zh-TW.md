@@ -17,7 +17,7 @@
   (CC BY-SA 4.0)
 - 授權網址：https://creativecommons.org/licenses/by-sa/4.0/
 - 本地轉換腳本：`tools/build_zhuyin_dictionary.py`
-- 打包資產 SHA-256：`78d4ed4b7bb695203e3a2c291921180f503e88498f31b705edb1e0ac80454aec`
+- 打包資產 SHA-256：`df1664881c7417be73d430ee90915ba13d70aa67f19632a70d170bdeefb5ead9`
 
 執行的轉換內容：
 
@@ -30,7 +30,11 @@
 
 產生出的檔案屬於衍生資料資產；重新散布時應持續保留 CC-CEDICT 的標示，並採用相容的授權處理方式。
 
-目前打包資產當初使用的 CC-CEDICT archive 並未保留，因此無法誠實標示其精確上游 release、來源 archive checksum，或逐 byte 重建。轉換腳本目前固定一份較新的重建基準：2026-07-15 從 MDBG 下載，SHA-256 為 `33d79ec1cc91fd1bc76fe7e590723d474cfe6ab364648eef9b7b52677e897d87`。該份已驗證的基準會產生不同的字典資產，不能視為目前 repository 內資產的來源快照。MDBG 下載網址會隨最新版變動；checksum 才是轉換腳本接受的重建輸入識別。為避免意外用不同基準覆寫目前資產，腳本預設輸出到 `build/dictionary-rebuild/`；若要替換打包資產，必須明確指定 `--target`、`--license-file`，並同步更新來源聲明。
+目前基準為 2026-09-23 從 MDBG 取得的 CC-CEDICT，精確 archive 保留於
+`tools/data/cedict.txt.gz`，SHA-256 為 `98c1a804e9ecf103494c85c18300dcd792acced9d238350ebcd84297e77a2c30`。
+MDBG 網址僅記錄來源，重建不會下載可變動的最新版。執行
+`python tools/rebuild_dictionary.py --check` 可逐 byte 重建並比對字典與授權聲明。
+所有字典輸入均保存在專案內並驗證 checksum。
 
 ### McBopomofo 片語讀音與彙總詞頻資料
 

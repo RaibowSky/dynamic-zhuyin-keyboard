@@ -12,5 +12,5 @@ dependencyResolutionManagement {
         mavenCentral()
     }
 }
-rootProject.name = "IOSZhuyinKeyboard"
+rootProject.name = "DynamicZhuyinKeyboard"
 include(":app")
