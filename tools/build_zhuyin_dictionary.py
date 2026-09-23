@@ -241,7 +241,7 @@ def main() -> None:
     frequency_license = root / "tools" / "data" / "McBopomofo_LICENSE.txt"
     verify_source(source, CC_CEDICT_ARCHIVE_SHA256, "CC-CEDICT archive")
     frequencies = load_phrase_frequencies(frequency_source)
-    verify_source(frequency_license, "9cc138135c5fbfba9057868dc3055d154bbc3c936eea5e24d8a9dbb477a7efde", "McBopomofo license")
+    verify_source(frequency_license, "72ed32193b0c629def66df63791b2fb125946b593a3251380e6b949488f47b72", "McBopomofo license")
     mcbopomofo_license = frequency_license.read_text(encoding="utf-8").strip()
 
     entries: dict[str, list[str]] = {}

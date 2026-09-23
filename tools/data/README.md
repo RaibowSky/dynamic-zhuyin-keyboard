@@ -67,4 +67,4 @@ The scripts verify both source SHA-256 values before use. Updating either
 source requires updating the pinned commit, checksums, notices, tests, and
 generated asset attribution together. No underlying source corpus is included.
 
-License text build input SHA-256 (`McBopomofo_LICENSE.txt`): `9cc138135c5fbfba9057868dc3055d154bbc3c936eea5e24d8a9dbb477a7efde`.
+License text build input SHA-256 (`McBopomofo_LICENSE.txt`): `72ed32193b0c629def66df63791b2fb125946b593a3251380e6b949488f47b72`.
