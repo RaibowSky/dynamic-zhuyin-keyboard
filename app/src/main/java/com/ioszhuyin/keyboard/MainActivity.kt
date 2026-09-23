@@ -40,6 +40,7 @@ class MainActivity : AppCompatActivity() {
     private var totalEntries: Int = 0
     private var selectedEntry: UserDictionaryEntry? = null
     private var listRefreshGeneration: Long = 0
+    private var learningStatusGeneration: Long = 0
     private var listLoading = false
     private val learningPreferencesListener =
         SharedPreferences.OnSharedPreferenceChangeListener listener@ { _, key ->
@@ -359,14 +360,38 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun refreshLearningStatus() {
+        if (!::learningStatusText.isInitialized || !::learningToggleButton.isInitialized) return
         val enabled = CandidateLearningSettings.isEnabled(this)
-        val count = store.learningEntryCount()
-        learningStatusText.text = if (enabled) {
-            "候選學習：開啟（$count 筆排序紀錄）"
-        } else {
-            "候選學習：暫停（保留 $count 筆既有排序紀錄）"
-        }
         learningToggleButton.text = if (enabled) "暫停學習" else "繼續學習"
+        learningStatusText.text = if (enabled) {
+            "候選學習：開啟（載入中…）"
+        } else {
+            "候選學習：暫停（載入中…）"
+        }
+        val generation = ++learningStatusGeneration
+        runCatching {
+            dictionaryIo.execute {
+                val result = runCatching { store.learningEntryCount() }
+                postToUi {
+                    if (generation != learningStatusGeneration) return@postToUi
+                    result.onSuccess { count ->
+                        learningStatusText.text = learningStatusCopy(enabled, count)
+                    }.onFailure {
+                        learningStatusText.text = if (enabled) {
+                            "候選學習：開啟（無法讀取筆數）"
+                        } else {
+                            "候選學習：暫停（無法讀取筆數）"
+                        }
+                    }
+                }
+            }
+        }.onFailure {
+            learningStatusText.text = if (enabled) {
+                "候選學習：開啟（無法讀取筆數）"
+            } else {
+                "候選學習：暫停（無法讀取筆數）"
+            }
+        }
     }
 
     private fun toggleLearning() {
@@ -377,22 +402,34 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun confirmClearLearning() {
-        val count = store.learningEntryCount()
-        if (count == 0) {
-            toast("目前沒有候選學習紀錄")
-            return
-        }
-        AlertDialog.Builder(this)
-            .setTitle("清除候選學習紀錄")
-            .setMessage("確定清除 $count 筆候選排序紀錄嗎？手動新增的使用者詞彙不會被刪除。")
-            .setPositiveButton("清除") { _, _ ->
-                runDictionaryTask("清除失敗", operation = store::clearLearning) { deleted ->
-                    refreshLearningStatus()
-                    toast("已清除 $deleted 筆候選學習紀錄")
+        runCatching {
+            dictionaryIo.execute {
+                val result = runCatching { store.learningEntryCount() }
+                postToUi {
+                    result.onSuccess { count ->
+                        if (count == 0) {
+                            toast("目前沒有候選學習紀錄")
+                            return@onSuccess
+                        }
+                        AlertDialog.Builder(this)
+                            .setTitle("清除候選學習紀錄")
+                            .setMessage("確定清除 $count 筆候選排序紀錄嗎？手動新增的使用者詞彙不會被刪除。")
+                            .setPositiveButton("清除") { _, _ ->
+                                runDictionaryTask("清除失敗", operation = store::clearLearning) { deleted ->
+                                    refreshLearningStatus()
+                                    toast("已清除 $deleted 筆候選學習紀錄")
+                                }
+                            }
+                            .setNegativeButton("取消", null)
+                            .show()
+                    }.onFailure {
+                        toast(it.message ?: "讀取學習紀錄失敗")
+                    }
                 }
             }
-            .setNegativeButton("取消", null)
-            .show()
+        }.onFailure {
+            toast(it.message ?: "讀取學習紀錄失敗")
+        }
     }
 
     private fun clearSelection() {
@@ -560,6 +597,13 @@ class MainActivity : AppCompatActivity() {
             toast(it.message ?: fallbackError)
         }
     }
+
+    private fun learningStatusCopy(enabled: Boolean, count: Int): String =
+        if (enabled) {
+            "候選學習：開啟（$count 筆排序紀錄）"
+        } else {
+            "候選學習：暫停（保留 $count 筆既有排序紀錄）"
+        }
 
     private fun dictionaryStatusText(): String =
         if (totalEntries > entries.size) {
