@@ -3,6 +3,7 @@ package com.ioszhuyin.keyboard
 import android.content.Context
 import android.content.SharedPreferences
 import android.graphics.*
+import android.content.res.Configuration
 import android.os.Build
 import android.util.AttributeSet
 import android.view.MotionEvent
@@ -169,39 +170,51 @@ class ZhuyinKeyboardView @JvmOverloads constructor(
     // ============================================================
     // 顏色
     // ============================================================
-    private val colorKeyBg = Color.WHITE
-    private val colorKeyBgDisabled = Color.parseColor("#F3F4F6")
-    private val colorKeyBgPressed = Color.parseColor("#C7CCD4")
-    private val colorKeyStroke = Color.parseColor("#D1D5DB")
-    private val colorKeyText = Color.parseColor("#1F2937")
-    private val colorKeyTextDisabled = Color.parseColor("#D1D5DB")
-    private val colorControlBg = Color.parseColor("#ABB1BD")
-    private val colorControlBgPressed = Color.parseColor("#9097A3")
-    private val colorControlText = Color.parseColor("#1F2937")
-    private val colorSpaceBg = Color.WHITE
-    private val colorSpaceText = Color.parseColor("#374151")
-    private val colorReturnBg = Color.parseColor("#ABB1BD")
-    private val colorReturnBgPressed = Color.parseColor("#9097A3")
-    private val colorToneBg = Color.parseColor("#007AFF")
+    private var palette: KeyboardPalette = ThemePalette.keyboard(context)
+    private val colorKeyBg get() = palette.keyBackground
+    private val colorKeyBgDisabled get() = palette.keyBackgroundDisabled
+    private val colorKeyBgPressed get() = palette.keyBackgroundPressed
+    private val colorKeyStroke get() = palette.keyStroke
+    private val colorKeyText get() = palette.keyText
+    private val colorKeyTextDisabled get() = palette.keyTextDisabled
+    private val colorControlBg get() = palette.controlBackground
+    private val colorControlBgPressed get() = palette.controlBackgroundPressed
+    private val colorControlText get() = palette.controlText
+    private val colorSpaceBg get() = palette.spaceBackground
+    private val colorSpaceText get() = palette.spaceText
+    private val colorReturnBg get() = palette.returnBackground
+    private val colorReturnBgPressed get() = palette.returnBackgroundPressed
+    private val colorToneBg get() = palette.toneBackground
 
     init {
-        paintKeyText.color = colorKeyText
+        applyPalette(palette)
         paintKeyText.textAlign = Paint.Align.CENTER
+        paintKeyStroke.style = Paint.Style.STROKE
+        paintKeyStroke.strokeWidth = dp(metrics.keyStrokeWidth)
+        paintCandidateText.textAlign = Paint.Align.CENTER
+        paintControlText.textAlign = Paint.Align.CENTER
+        paintToneText.textAlign = Paint.Align.CENTER
+        // Visible keys are always active, like Apple's dynamic Zhuyin keyboard.
+    }
+
+    fun applySystemTheme() {
+        applyPalette(ThemePalette.keyboard(context))
+        invalidate()
+    }
+
+    private fun applyPalette(next: KeyboardPalette) {
+        palette = next
+        setBackgroundColor(palette.background)
+        paintKeyText.color = colorKeyText
         paintKeyBg.color = colorKeyBg
         paintKeyBgDisabled.color = colorKeyBgDisabled
         paintKeyStroke.color = colorKeyStroke
-        paintKeyStroke.style = Paint.Style.STROKE
-        paintKeyStroke.strokeWidth = dp(metrics.keyStrokeWidth)
         paintCandidateText.color = colorKeyText
-        paintCandidateText.textAlign = Paint.Align.CENTER
-        paintCandidateBg.color = Color.WHITE
-        paintBar.color = Color.parseColor("#E5E7EB")
+        paintCandidateBg.color = palette.candidateBackground
+        paintBar.color = palette.candidateBar
         paintControlText.color = colorControlText
-        paintControlText.textAlign = Paint.Align.CENTER
         paintToneBg.color = colorToneBg
-        paintToneText.color = Color.WHITE
-        paintToneText.textAlign = Paint.Align.CENTER
-        // Visible keys are always active, like Apple's dynamic Zhuyin keyboard.
+        paintToneText.color = palette.toneText
     }
 
     override fun onAttachedToWindow() {
@@ -299,6 +312,11 @@ class ZhuyinKeyboardView @JvmOverloads constructor(
             invalidate()
         }
         return super.onApplyWindowInsets(insets)
+    }
+
+    override fun onConfigurationChanged(newConfig: Configuration) {
+        super.onConfigurationChanged(newConfig)
+        applySystemTheme()
     }
 
     private fun relayout() {
@@ -661,27 +679,27 @@ class ZhuyinKeyboardView @JvmOverloads constructor(
                         else if (zhuyinKeys.isNotEmpty()) zhuyinKeys.last().rect.bottom
                         else height.toFloat()
         if (bgBottom > bgTop) {
-            paintRoundRect.color = Color.parseColor("#D1D5DB")
+            paintRoundRect.color = palette.background
             canvas.drawRect(0f, bgTop.coerceAtLeast(0f), width.toFloat(),
                 height.toFloat(), paintRoundRect)
             // 頂部分隔線
             if (bgTop > 0f) {
-                paintRoundRect.color = Color.parseColor("#C8CCD0")
+                paintRoundRect.color = palette.topDivider
                 canvas.drawRect(0f, bgTop, width.toFloat(), bgTop + 1f, paintRoundRect)
             }
         }
 
         // Candidate bar
         if (candidateBarRect.height() > 0) {
-            drawRect(canvas, candidateBarRect, Color.parseColor("#E5E7EB"))
+            drawRect(canvas, candidateBarRect, palette.candidateBar)
             canvas.save()
             canvas.clipRect(candidateBarRect)
             for (cell in candidateCells) {
                 if (!RectF.intersects(candidateBarRect, cell.rect)) continue
                 val bg = if (cell.candidateIndex == selectedCandidateIndex) {
-                    Color.parseColor("#C7CCD4")
+                    palette.candidateSelected
                 } else {
-                    Color.WHITE
+                    palette.candidateBackground
                 }
                 drawRoundRect(canvas, cell.rect, bg, dp(metrics.candidateCornerRadius))
                 val cy = cell.rect.centerY() -
@@ -698,7 +716,7 @@ class ZhuyinKeyboardView @JvmOverloads constructor(
                 drawRoundRect(
                     canvas,
                     candidateToggleRect,
-                    Color.parseColor("#D1D5DB"),
+                    palette.candidateToggle,
                     dp(metrics.candidateCornerRadius)
                 )
                 drawCandidateToggleIcon(canvas, candidateToggleRect, candidateExpanded)
@@ -744,7 +762,7 @@ class ZhuyinKeyboardView @JvmOverloads constructor(
             val isPressed = (i == pressedControlIdx)
             when (k.action) {
                 ControlAction.SPACE -> {
-                    val c = if (isPressed) Color.parseColor("#E5E7EB") else colorSpaceBg
+                    val c = if (isPressed) palette.spaceBackgroundPressed else colorSpaceBg
                     drawRoundRect(canvas, k.rect, c, cornerRadius)
                     paintControlText.color = colorSpaceText
                     val cy = k.rect.centerY() - (paintControlText.ascent() + paintControlText.descent()) / 2
