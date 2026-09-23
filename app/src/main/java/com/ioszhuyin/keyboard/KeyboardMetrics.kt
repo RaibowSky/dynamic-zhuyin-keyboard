@@ -34,8 +34,6 @@ data class KeyboardLayoutMetrics(
     val candidateCornerRadius: Float,
     val candidateMoreFontSize: Float,
     val hintBottomPadding: Float,
-    val englishFunctionKeyWidth: Float,
-    val englishLetterStartSlot: Float,
     val toneShiftSlot: Float,
     val toneStartSlot: Float,
     val toneKeyStep: Float,
@@ -79,8 +77,6 @@ object KeyboardMetrics {
         candidateCornerRadius = 4f,
         candidateMoreFontSize = 18f,
         hintBottomPadding = 3f,
-        englishFunctionKeyWidth = 1.12f,
-        englishLetterStartSlot = 1.55f,
         toneShiftSlot = 0f,
         toneStartSlot = 1.45f,
         toneKeyStep = 1.5f,
@@ -119,8 +115,6 @@ object KeyboardMetrics {
         candidateCornerRadius = 4f,
         candidateMoreFontSize = 18f,
         hintBottomPadding = 3f,
-        englishFunctionKeyWidth = 1.12f,
-        englishLetterStartSlot = 1.55f,
         toneShiftSlot = 0f,
         toneStartSlot = 1.45f,
         toneKeyStep = 1.5f,
@@ -169,8 +163,6 @@ object KeyboardMetrics {
             candidateCornerRadius = prefs.getFloat(KEY_CANDIDATE_CORNER_RADIUS, preset.candidateCornerRadius),
             candidateMoreFontSize = prefs.getFloat(KEY_CANDIDATE_MORE_FONT_SIZE, preset.candidateMoreFontSize),
             hintBottomPadding = prefs.getFloat(KEY_HINT_BOTTOM_PADDING, preset.hintBottomPadding),
-            englishFunctionKeyWidth = prefs.getFloat(KEY_ENGLISH_FUNCTION_KEY_WIDTH, preset.englishFunctionKeyWidth),
-            englishLetterStartSlot = prefs.getFloat(KEY_ENGLISH_LETTER_START_SLOT, preset.englishLetterStartSlot),
             toneShiftSlot = prefs.getFloat(KEY_TONE_SHIFT_SLOT, preset.toneShiftSlot),
             toneStartSlot = prefs.getFloat(KEY_TONE_START_SLOT, preset.toneStartSlot),
             toneKeyStep = prefs.getFloat(KEY_TONE_KEY_STEP, preset.toneKeyStep),
@@ -213,8 +205,6 @@ object KeyboardMetrics {
             .putFloat(KEY_CANDIDATE_CORNER_RADIUS, preset.candidateCornerRadius)
             .putFloat(KEY_CANDIDATE_MORE_FONT_SIZE, preset.candidateMoreFontSize)
             .putFloat(KEY_HINT_BOTTOM_PADDING, preset.hintBottomPadding)
-            .putFloat(KEY_ENGLISH_FUNCTION_KEY_WIDTH, preset.englishFunctionKeyWidth)
-            .putFloat(KEY_ENGLISH_LETTER_START_SLOT, preset.englishLetterStartSlot)
             .putFloat(KEY_TONE_SHIFT_SLOT, preset.toneShiftSlot)
             .putFloat(KEY_TONE_START_SLOT, preset.toneStartSlot)
             .putFloat(KEY_TONE_KEY_STEP, preset.toneKeyStep)
@@ -258,8 +248,6 @@ object KeyboardMetrics {
     const val KEY_CANDIDATE_CORNER_RADIUS = "keyboard_metric_candidate_corner_radius"
     const val KEY_CANDIDATE_MORE_FONT_SIZE = "keyboard_metric_candidate_more_font_size"
     const val KEY_HINT_BOTTOM_PADDING = "keyboard_metric_hint_bottom_padding"
-    const val KEY_ENGLISH_FUNCTION_KEY_WIDTH = "keyboard_metric_english_function_key_width"
-    const val KEY_ENGLISH_LETTER_START_SLOT = "keyboard_metric_english_letter_start_slot"
     const val KEY_TONE_SHIFT_SLOT = "keyboard_metric_tone_shift_slot"
     const val KEY_TONE_START_SLOT = "keyboard_metric_tone_start_slot"
     const val KEY_TONE_KEY_STEP = "keyboard_metric_tone_key_step"

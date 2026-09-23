@@ -128,6 +128,29 @@ internal object CandidatePanelBehavior {
     }
 }
 
+/** Policy for delegating ASCII input to the user's external system IME. */
+internal object ExternalImeDelegation {
+    enum class Outcome {
+        SWITCHED,
+        OPENED_PICKER,
+        FAILED
+    }
+
+    /**
+     * Prefer a direct switch to the next enabled system IME. Only when that is
+     * unavailable or rejected, fall back to the system IME picker so the user is
+     * never left without a path to type ASCII.
+     */
+    fun delegate(
+        trySwitchToNextIme: () -> Boolean,
+        openImePicker: () -> Boolean
+    ): Outcome = when {
+        trySwitchToNextIme() -> Outcome.SWITCHED
+        openImePicker() -> Outcome.OPENED_PICKER
+        else -> Outcome.FAILED
+    }
+}
+
 internal data class KeyboardHitBox(
     val left: Float,
     val top: Float,
