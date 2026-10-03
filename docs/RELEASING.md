@@ -61,6 +61,8 @@ and import the export. Exporting learning data requires a separate explicit choi
 4. Tag the commit `v<versionName>` and create a release with meaningful notes,
    the signed APK, and `SHA256SUMS.txt`. No private signing files are uploaded.
 5. Verify that the downloadable APK hash matches the locally verified artifact.
+6. Update the version and direct APK download link at the top of README.md and
+   README.en.md to the newly published release asset.
 
 Font import uses the document picker and keeps a private copy (maximum 20 MB).
 Android 10+ `SystemFonts.getAvailableFonts()` exposes font files, not a portable

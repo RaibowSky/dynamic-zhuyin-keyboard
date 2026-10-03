@@ -1,5 +1,14 @@
 # Dynamic Zhuyin Keyboard for Android
 
+## 📥 [Download Android APK (v1.1.1)](https://github.com/RaibowSky/dynamic-zhuyin-keyboard/releases/download/v1.1.1/dynamic-zhuyin-1.1.1.apk)
+
+**Tap the link above on your phone to download the installer. Requires Android 7.0+.**
+Open the downloaded `.apk` to install, then open Dynamic Zhuyin Keyboard and use its enable-keyboard and switch-keyboard buttons.
+
+[Latest release and release notes](https://github.com/RaibowSky/dynamic-zhuyin-keyboard/releases/latest) · [Installation and upgrades](#installation)
+
+On the Releases page, expand **Assets** and select the `.apk` file. The `Source code` archives are not Android installers.
+
 A Zhuyin (Bopomofo / ㄅㄆㄇ) input method that runs entirely on the device.
 It uses a dynamic-keyboard layout inspired by iOS Zhuyin input behavior while
 staying fully offline and privacy-first.

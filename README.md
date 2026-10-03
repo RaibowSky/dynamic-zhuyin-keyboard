@@ -1,5 +1,14 @@
 # 動態注音鍵盤（Dynamic Zhuyin Keyboard）
 
+## 📥 [下載 Android APK（v1.1.1）](https://github.com/RaibowSky/dynamic-zhuyin-keyboard/releases/download/v1.1.1/dynamic-zhuyin-1.1.1.apk)
+
+**手機使用者點上方連結即可下載安裝檔，需要 Android 7.0 以上。**
+下載後開啟 `.apk` 安裝，再開啟「動態注音鍵盤」，依序點選「啟用鍵盤」與「切換鍵盤」。
+
+[最新版本與更新說明](https://github.com/RaibowSky/dynamic-zhuyin-keyboard/releases/latest) · [安裝與舊版升級說明](#安裝)
+
+若從 Releases 頁面下載，請展開 **Assets** 並選擇 `.apk` 檔；`Source code` 是原始碼，不能直接安裝。
+
 一套在 Android 裝置本機運作的注音（Bopomofo／ㄅㄆㄇ）輸入法，採用「動態鍵盤」
 設計，目標是提供接近 iOS 注音輸入法的輸入體驗，同時保持完全離線、注重隱私。
 
