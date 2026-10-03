@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.1.1 (2026-10-03)
+
+- Restore built-in English QWERTY with one-shot Shift and ABC / 注 round-trip controls.
+- Keep password, email and force-ASCII editors in this IME using its English page.
+- Use half-width numbers and punctuation from English, with a direct ABC return.
+- Preserve pending composition when an editor rejects it and explain why the switch was stopped.
+
 ## 1.1.0
 
 - System-aware light/dark colors for the keyboard, dictionary settings and bars.

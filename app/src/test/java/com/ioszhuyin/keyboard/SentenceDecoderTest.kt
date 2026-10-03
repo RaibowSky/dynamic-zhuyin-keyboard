@@ -58,14 +58,4 @@ class SentenceDecoderTest {
         assertTrue(match.choices.count { it.end == 80 } in 2..9)
     }
 
-    @Test fun externalImeFallbackHandlesFailuresAndUsesPreviousFirst() {
-        var nextCalled = false
-        assertEquals(ExternalImeDelegation.Outcome.SWITCHED,
-            ExternalImeDelegation.delegate({ true }, { nextCalled = true; true }, { true }))
-        assertFalse(nextCalled)
-        assertEquals(ExternalImeDelegation.Outcome.OPENED_PICKER,
-            ExternalImeDelegation.delegate({ error("unavailable") }, { false }, { true }))
-        assertEquals(ExternalImeDelegation.Outcome.FAILED,
-            ExternalImeDelegation.delegate({ false }, { false }, { error("unavailable") }))
-    }
 }
