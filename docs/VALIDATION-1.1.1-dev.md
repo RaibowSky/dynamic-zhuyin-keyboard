@@ -49,3 +49,16 @@ app, other OEMs, older Android versions, landscape, and editor rejection were
 not exercised. English provides direct letter entry and one-shot Shift; English
 autocorrect/prediction and Caps Lock are outside this change. The historical
 1.1.0 release and its validation record remain unchanged.
+
+## Stable 1.1.1 packaging and upgrade
+
+The same implementation was packaged as release `1.1.1` (versionCode `3`).
+The stable APK passed signature verification using the existing v1.1.0
+certificate SHA-256:
+`5ea36ca68890ffede01393a39450476fabfa0e77f4de56f38066fa5f2c61e97d`.
+
+On a fresh Android 16 / API 36.1 emulator, the published v1.1.0 APK was installed
+and learning was paused through the settings UI. `adb install -r` of the signed
+1.1.1 APK succeeded, package metadata reported versionCode 3 / versionName 1.1.1
+without DEBUGGABLE, and the settings screen still showed learning paused.
+The reproducible dictionary check passed with the unchanged dictionary checksum.
