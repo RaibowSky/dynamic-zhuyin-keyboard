@@ -11,7 +11,6 @@ import android.util.Log
 import android.view.KeyEvent
 import android.view.View
 import android.view.inputmethod.EditorInfo
-import android.view.inputmethod.InputMethodManager
 import android.widget.LinearLayout
 import java.io.File
 
@@ -802,58 +801,16 @@ class IOSZhuyinIME : InputMethodService() {
     }
 
     private fun handleEnglishMode() {
-        if (!drainComposing(recordLearning = true)) return
-        switchToExternalIme()
-        vibrateLight()
-    }
-
-    private fun switchToExternalIme() {
-        val inputMethodManager =
-            getSystemService(INPUT_METHOD_SERVICE) as? InputMethodManager
-        if (inputMethodManager == null) {
-            Log.w(TAG, "InputMethodManager unavailable; cannot delegate ASCII input")
+        if (!drainComposing(recordLearning = true)) {
+            android.widget.Toast.makeText(
+                this, "輸入框暫時無法接收組字，已保留內容，請再試一次。",
+                android.widget.Toast.LENGTH_SHORT
+            ).show()
             return
         }
-        val outcome = ExternalImeDelegation.delegate(
-            trySwitchToPreviousIme = ::trySwitchToPreviousExternalIme,
-            trySwitchToNextIme = ::trySwitchToNextExternalIme,
-            openImePicker = {
-                runCatching { inputMethodManager.showInputMethodPicker() }.isSuccess
-            }
-        )
-        if (outcome != ExternalImeDelegation.Outcome.SWITCHED) {
-            android.widget.Toast.makeText(this, "請選擇其他輸入法輸入英文；若清單只有本鍵盤，請先在系統設定啟用其他鍵盤。", android.widget.Toast.LENGTH_LONG).show()
-            Log.w(TAG, "External IME delegation ended with $outcome")
-        }
-    }
-
-    @Suppress("DEPRECATION")
-    private fun trySwitchToPreviousExternalIme(): Boolean = runCatching {
-        if (Build.VERSION.SDK_INT >= 28) switchToPreviousInputMethod()
-        else {
-            val token = window?.window?.attributes?.token ?: return@runCatching false
-            (getSystemService(INPUT_METHOD_SERVICE) as InputMethodManager).switchToLastInputMethod(token)
-        }
-    }.getOrDefault(false)
-
-    @Suppress("DEPRECATION")
-    private fun trySwitchToNextExternalIme(): Boolean {
-        return try {
-            val windowToken = window?.window?.attributes?.token
-            if (windowToken == null) {
-                Log.w(TAG, "No window token available for external IME switch")
-                return false
-            }
-            val inputMethodManager =
-                getSystemService(INPUT_METHOD_SERVICE) as InputMethodManager
-            // onlyCurrentIme = false: cycle to the next enabled system IME instead
-            // of toggling subtypes of this IME, which has no English layout anymore.
-            if (Build.VERSION.SDK_INT >= 28) switchToNextInputMethod(false)
-            else inputMethodManager.switchToNextInputMethod(windowToken, false)
-        } catch (error: RuntimeException) {
-            Log.w(TAG, "External IME switch failed", error)
-            false
-        }
+        keyboardView?.setMode(ZhuyinKeyboardView.Mode.ENGLISH)
+        refreshPunctuationSuggestionsForCurrentMode()
+        vibrateLight()
     }
 
     private fun handleNumberMode() {
@@ -861,6 +818,7 @@ class IOSZhuyinIME : InputMethodService() {
         val view = keyboardView ?: return
         view.setMode(
             when (view.getMode()) {
+                ZhuyinKeyboardView.Mode.ENGLISH,
                 ZhuyinKeyboardView.Mode.HALF_WIDTH_NUMBER,
                 ZhuyinKeyboardView.Mode.HALF_WIDTH_SYMBOL ->
                     ZhuyinKeyboardView.Mode.HALF_WIDTH_NUMBER
@@ -908,6 +866,7 @@ class IOSZhuyinIME : InputMethodService() {
         if (composingText.isNotEmpty()) return
         val mode = keyboardView?.getMode() ?: return
         allCandidates = if (
+            mode == ZhuyinKeyboardView.Mode.ENGLISH ||
             mode == ZhuyinKeyboardView.Mode.HALF_WIDTH_NUMBER ||
             mode == ZhuyinKeyboardView.Mode.HALF_WIDTH_SYMBOL
         ) {
@@ -944,7 +903,7 @@ class IOSZhuyinIME : InputMethodService() {
         view.setMode(
             when (editorKeyboardMode) {
                 EditorKeyboardMode.ZHUYIN -> ZhuyinKeyboardView.Mode.ZHUYIN
-                EditorKeyboardMode.EXTERNAL_ASCII -> ZhuyinKeyboardView.Mode.HALF_WIDTH_NUMBER
+                EditorKeyboardMode.ENGLISH -> ZhuyinKeyboardView.Mode.ENGLISH
                 EditorKeyboardMode.NUMBER -> ZhuyinKeyboardView.Mode.NUMBER
             }
         )
@@ -1090,9 +1049,6 @@ class IOSZhuyinIME : InputMethodService() {
         stopBackspaceRepeat()
         super.onStartInputView(info, restarting)
         keyboardView?.customTypeface = KeyboardFont.load(this)
-        if (!restarting && editorKeyboardMode == EditorKeyboardMode.EXTERNAL_ASCII) {
-            mainHandler.post { if (isInputViewShown && editorKeyboardMode == EditorKeyboardMode.EXTERNAL_ASCII) switchToExternalIme() }
-        }
         applySystemTheme()
         keyboardView?.setReturnKeyLabel(editorReturnKeyLabel)
         if (composingText.isEmpty() && !editorCompositionPending) {

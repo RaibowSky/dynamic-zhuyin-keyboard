@@ -25,7 +25,7 @@ movement while offering candidates from a bundled on-device dictionary.
 - Zhuyin candidate lookup from a locally generated dictionary asset.
 - Continuous sentence decoding combines phrases and characters, preserves 一/不
   tone sandhi, and keeps the suffix when correcting the leading character.
-- Zhuyin, number and symbol pages; ABC switches to another enabled system IME.
+- Zhuyin, English, number and symbol pages; ABC / 注 switch languages within this keyboard.
 - System light/dark themes and local TTF/OTF import with preview and default reset.
 - On-device candidate learning that ranks frequently used characters and words
   higher over time.
@@ -36,7 +36,7 @@ movement while offering candidates from a bundled on-device dictionary.
 ## Installation
 
 Download the signed APK and checksum from [Releases](https://github.com/RaibowSky/dynamic-zhuyin-keyboard/releases/latest).
-Requires Android 7.0+ and another enabled system keyboard for English input.
+Requires Android 7.0+. Version 1.1.1 restores built-in English, so another keyboard is no longer required for English input.
 The old Build Week debug build has a different signature: export your dictionary,
 uninstall the demo, then install stable. Future stable builds use the same signing
 identity and support normal updates. See [release/version policy](docs/RELEASING.md).
