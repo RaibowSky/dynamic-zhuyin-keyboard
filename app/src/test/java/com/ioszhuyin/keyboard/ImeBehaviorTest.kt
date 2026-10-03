@@ -725,16 +725,16 @@ class ImeBehaviorTest {
         assertEquals(
             listOf(
                 listOf("1", "2", "3", "4", "5", "6", "7", "8", "9", "0"),
-                listOf("-", "/", ":", ";", "(", ")", "$", "@", "「", "」"),
-                listOf("#+=", "。", "，", "、", "?", "!", "’", "⌫")
+                listOf("－", "／", "：", "；", "（", "）", "＄", "＠", "「", "」"),
+                listOf("#+=", "。", "，", "、", "？", "！", "’", "⌫")
             ),
             IosAuxiliaryLayout.NUMBER_ROWS
         )
         assertEquals(
             listOf(
-                listOf("[", "]", "{", "}", "#", "%", "^", "*", "+", "="),
-                listOf("_", "—", "\\", "|", "~", "«", "»", "¥", "&", "·"),
-                listOf("123", "…", "，", "^_^", "?", "!", "’", "⌫")
+                listOf("【", "】", "『", "』", "＃", "％", "＾", "＊", "＋", "＝"),
+                listOf("＿", "—", "＼", "｜", "～", "《", "》", "￥", "＆", "·"),
+                listOf("123", "…", "，", "^_^", "？", "！", "’", "⌫")
             ),
             IosAuxiliaryLayout.SYMBOL_ROWS
         )
@@ -753,18 +753,6 @@ class ImeBehaviorTest {
                 listOf("123", ".", ",", "?", "!", "'", "⌫")
             ),
             IosAuxiliaryLayout.HALF_WIDTH_SYMBOL_ROWS
-        )
-    }
-
-    @Test
-    fun punctuationSuggestionsKeepChineseAndAsciiFormsSeparate() {
-        assertEquals(
-            listOf("，", "。", "、", "？", "！", "：", "；", "「", "」", "（", "）", "……"),
-            PunctuationSuggestions.FULL_WIDTH
-        )
-        assertEquals(
-            listOf(",", ".", "?", "!", ":", ";", "\"", "'", "(", ")", "-", "/"),
-            PunctuationSuggestions.HALF_WIDTH
         )
     }
 

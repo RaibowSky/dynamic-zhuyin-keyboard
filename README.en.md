@@ -1,6 +1,6 @@
 # Dynamic Zhuyin Keyboard for Android
 
-## 📥 [Download Android APK (v1.1.1)](https://github.com/RaibowSky/dynamic-zhuyin-keyboard/releases/download/v1.1.1/dynamic-zhuyin-1.1.1.apk)
+## 📥 [Download Android APK (v1.2.0)](https://github.com/RaibowSky/dynamic-zhuyin-keyboard/releases/download/v1.2.0/dynamic-zhuyin-1.2.0.apk)
 
 **Tap the link above on your phone to download the installer. Requires Android 7.0+.**
 Open the downloaded `.apk` to install, then open Dynamic Zhuyin Keyboard and use its enable-keyboard and switch-keyboard buttons.
@@ -97,8 +97,13 @@ Actual Android emulator screenshots:
 
 ## Roadmap and known limitations
 
+- Since 1.2.0: hold-space cursor movement,
+  full/half-width symbols, common emoji, an opt-in clipboard history panel with pins, and public layout controls.
+  Unpinned clips (up to 50) older than one hour are removed the next time the clipboard is used; up to 50 pins survive automatic cleanup.
+  See [features and verification](docs/KEYBOARD-FEEDBACK.md).
 - Offline sentence ranking uses frequency order, word length and local preferences;
-  no network model or next-word prediction after committing a sentence.
+  no network model. Version 1.2.0 adds a small starter list and locally learned
+  next-word suggestions, rather than comprehensive context prediction.
 - Up to nine paths per syllable position and 16 syllables per dictionary edge;
   sentence length has no three-syllable ceiling.
 - TTF/OTF import supports files up to 20 MB, with bundled/system glyph fallbacks.

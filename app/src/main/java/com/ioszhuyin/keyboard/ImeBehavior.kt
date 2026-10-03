@@ -192,14 +192,14 @@ internal object KeyboardHitTesting {
 internal object IosAuxiliaryLayout {
     val NUMBER_ROWS: List<List<String>> = listOf(
         listOf("1", "2", "3", "4", "5", "6", "7", "8", "9", "0"),
-        listOf("-", "/", ":", ";", "(", ")", "$", "@", "「", "」"),
-        listOf("#+=", "。", "，", "、", "?", "!", "’", "⌫")
+        listOf("－", "／", "：", "；", "（", "）", "＄", "＠", "「", "」"),
+        listOf("#+=", "。", "，", "、", "？", "！", "’", "⌫")
     )
 
     val SYMBOL_ROWS: List<List<String>> = listOf(
-        listOf("[", "]", "{", "}", "#", "%", "^", "*", "+", "="),
-        listOf("_", "—", "\\", "|", "~", "«", "»", "¥", "&", "·"),
-        listOf("123", "…", "，", "^_^", "?", "!", "’", "⌫")
+        listOf("【", "】", "『", "』", "＃", "％", "＾", "＊", "＋", "＝"),
+        listOf("＿", "—", "＼", "｜", "～", "《", "》", "￥", "＆", "·"),
+        listOf("123", "…", "，", "^_^", "？", "！", "’", "⌫")
     )
 
     val HALF_WIDTH_NUMBER_ROWS: List<List<String>> = listOf(
@@ -212,16 +212,6 @@ internal object IosAuxiliaryLayout {
         listOf("[", "]", "{", "}", "#", "%", "^", "*", "+", "="),
         listOf("_", "\\", "|", "~", "<", ">", "$", "&", "@", "`"),
         listOf("123", ".", ",", "?", "!", "'", "⌫")
-    )
-}
-
-internal object PunctuationSuggestions {
-    val FULL_WIDTH: List<String> = listOf(
-        "，", "。", "、", "？", "！", "：", "；", "「", "」", "（", "）", "……"
-    )
-
-    val HALF_WIDTH: List<String> = listOf(
-        ",", ".", "?", "!", ":", ";", "\"", "'", "(", ")", "-", "/"
     )
 }
 

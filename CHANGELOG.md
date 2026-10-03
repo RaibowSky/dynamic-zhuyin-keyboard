@@ -1,5 +1,15 @@
 # Changelog
 
+## 1.2.0 (2026-10-04)
+
+- Share one fixed-height header between idle tools, composition candidates and next-word predictions. The first Backspace dismisses predictions without deleting; another press deletes normally.
+- Hold the spacebar, then slide horizontally to move the cursor; short taps retain their existing behavior.
+- Add Chinese full-width punctuation, 「」『』【】, and a full/half-width toolbar switch.
+- Add a common emoji panel, a clipboard history panel, and a shortcut to settings in the IME's profile. Clipboard history is opt-in, local, bounded to 50 recent clips for one hour plus 50 persistent pins, with individual deletion and clear-unpinned controls; sensitive-marked text is excluded.
+- Expose keyboard height, spacing, bottom padding, width ratios and candidate sizing in release settings; presets now refresh slider values.
+- Suggest next words after selecting a Chinese candidate, using a small offline starter list plus local selection-pair learning. Existing pause, clear and opt-in export controls apply.
+- Label debug builds with a `-dev` version suffix.
+
 ## 1.1.1 (2026-10-03)
 
 - Restore built-in English QWERTY with one-shot Shift and ABC / 注 round-trip controls.

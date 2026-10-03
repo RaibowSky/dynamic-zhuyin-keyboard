@@ -1,6 +1,8 @@
 package com.ioszhuyin.keyboard
 
 import android.content.res.Configuration
+import android.content.Intent
+import android.content.ClipboardManager
 import android.graphics.Typeface
 import android.inputmethodservice.InputMethodService
 import android.os.Build
@@ -27,10 +29,18 @@ class IOSZhuyinIME : InputMethodService() {
     private var selectedCandidateIndex: Int = -1
     private var candidatePage: Int = 0
     private var candidatesExpanded: Boolean = false
-    private var showingPunctuationSuggestions: Boolean = false
+    private var showingNextWordSuggestions: Boolean = false
+    private var lastCommittedWord = ""
+    private var nextWordCandidates: Set<String> = emptySet()
+    private var backspaceDismissedSuggestions = false
+    private var modeBeforeEmoji = ZhuyinKeyboardView.Mode.ZHUYIN
     private var showFinalPage: Boolean = false
 
     private var personalizationAllowed = false
+    private var clipboardCaptureAllowed = true
+    private lateinit var clipboardHistory: ClipboardHistory
+    private var inputContainer: ClipboardInputView? = null
+    private var clipboardBackHandled = false
     private var editorKeyboardMode = EditorKeyboardMode.ZHUYIN
     private var editorReturnKeyLabel = "換行"
     private var performingEditorEdit = false
@@ -67,13 +77,25 @@ class IOSZhuyinIME : InputMethodService() {
     }
 
     private fun wordSelected(reading: String, word: String) {
-        if (!personalizationAllowed || !CandidateLearningSettings.isEnabled(this)) return
+        if (!personalizationAllowed) { lastCommittedWord = ""; return }
         runCatching {
-            userDictionaryStore.recordSelection(reading, word)
-            CandidateLearningSettings.notifyRecordsChanged(this)
-            sortedCandidateCache.clear()
+            if (CandidateLearningSettings.isEnabled(this)) {
+                userDictionaryStore.recordSelection(reading, word)
+                learnContinuation(word)
+                CandidateLearningSettings.notifyRecordsChanged(this)
+                sortedCandidateCache.clear()
+            }
         }.onFailure {
             Log.w(TAG, "Unable to record candidate learning", it)
+        }
+        lastCommittedWord = word.takeIf(NextWordSuggestions::eligible).orEmpty()
+    }
+
+    private fun learnContinuation(word: String) {
+        val previous = lastCommittedWord
+        if (!NextWordSuggestions.eligible(previous) || !NextWordSuggestions.eligible(word)) return
+        if (currentInputConnection?.getTextBeforeCursor(previous.length + word.length, 0)?.toString() == previous + word) {
+            userDictionaryStore.recordSelection(NextWordSuggestions.learningKey(previous), word)
         }
     }
 
@@ -150,6 +172,8 @@ class IOSZhuyinIME : InputMethodService() {
 
     override fun onCreate() {
         super.onCreate()
+        clipboardHistory = ClipboardHistory(this) { clipboardCaptureAllowed }
+        NextWordTable.preload(this)
         @Suppress("DEPRECATION")
         vibrator = getSystemService(VIBRATOR_SERVICE) as? android.os.Vibrator
         userDictionaryStore = UserDictionaryStore(this)
@@ -169,6 +193,10 @@ class IOSZhuyinIME : InputMethodService() {
     }
 
     override fun onDestroy() {
+        inputContainer?.closeClipboard()
+        inputContainer = null
+        if (::clipboardHistory.isInitialized) clipboardHistory.close()
+        keyboardView?.cancelCursorGesture()
         stopBackspaceRepeat()
         if (::userDictionaryStore.isInitialized) userDictionaryStore.close()
         keyboardView = null
@@ -200,6 +228,46 @@ class IOSZhuyinIME : InputMethodService() {
         view.onBackspace = { handleBackspaceDown() }
         view.onBackspaceRelease = { handleBackspaceUp() }
         view.onSpace = { handleSpace() }
+        view.onWidthToggle = {
+            if (editorKeyboardMode == EditorKeyboardMode.ZHUYIN && drainComposing(recordLearning = true)) {
+                val target = when (view.getMode()) {
+                    ZhuyinKeyboardView.Mode.ZHUYIN,
+                    ZhuyinKeyboardView.Mode.EMOJI,
+                    ZhuyinKeyboardView.Mode.NUMBER -> ZhuyinKeyboardView.Mode.HALF_WIDTH_NUMBER
+                    ZhuyinKeyboardView.Mode.SYMBOL -> ZhuyinKeyboardView.Mode.HALF_WIDTH_SYMBOL
+                    ZhuyinKeyboardView.Mode.HALF_WIDTH_SYMBOL -> ZhuyinKeyboardView.Mode.SYMBOL
+                    else -> ZhuyinKeyboardView.Mode.NUMBER
+                }
+                view.setMode(target)
+                showNextWordSuggestions()
+                vibrateLight()
+            }
+        }
+        view.onEmoji = {
+            if (editorKeyboardMode == EditorKeyboardMode.ZHUYIN && drainComposing(recordLearning = true)) {
+                if (view.getMode() == ZhuyinKeyboardView.Mode.EMOJI) view.setMode(modeBeforeEmoji)
+                else { modeBeforeEmoji = view.getMode(); view.setMode(ZhuyinKeyboardView.Mode.EMOJI) }
+                showNextWordSuggestions()
+            }
+        }
+        view.onPaste = { openClipboard() }
+        view.onSettings = {
+            startActivity(Intent(this, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+        }
+        view.onCursorGestureStart = {
+            (currentInputConnection != null).also { if (it) vibrateLight() }
+        }
+        view.onCursorMove = { steps ->
+            lastCommittedWord = ""
+            if (drainComposing(recordLearning = false)) {
+                currentInputConnection?.let { connection ->
+                    safeEditorOperation("spacebar cursor movement") {
+                        CursorNavigation.move(connection, steps)
+                    }
+                }
+            }
+        }
+        view.onEditAction = { label -> handleEditAction(label) }
         view.onReturn = { handleReturn() }
         view.onCandidateConfirm = { handleCandidateConfirm() }
         view.onCandidatePress = { candidateIndex -> handleCandidatePress(candidateIndex) }
@@ -217,7 +285,8 @@ class IOSZhuyinIME : InputMethodService() {
         applyEditorKeyboardMode()
         syncKeyboardView()
         applySystemTheme()
-        return view
+        return ClipboardInputView(this, view, clipboardHistory, ::pasteHistoryText, ::pasteClipboard)
+            .also { inputContainer = it }
     }
 
     override fun onConfigurationChanged(newConfig: Configuration) {
@@ -268,19 +337,20 @@ class IOSZhuyinIME : InputMethodService() {
         if (resetSelection) candidatesExpanded = false
         val raw = composingText.toString()
         if (raw.isEmpty()) {
+            nextWordCandidates = emptySet()
             allCandidates = emptyList()
             candidateChoices = emptyList()
             selectedCandidateIndex = -1
             candidatePage = 0
             candidatesExpanded = false
-            showingPunctuationSuggestions = false
+            showingNextWordSuggestions = false
             val editorAccepted = !syncEditorComposition ||
                 syncEditorComposing(clearEmptyComposition = clearEmptyEditorComposition)
             syncKeyboardView()
             return editorAccepted
         }
 
-        showingPunctuationSuggestions = false
+        showingNextWordSuggestions = false
 
         val match = ZhuyinComposition.resolveLeadingCandidates(
             raw = raw,
@@ -456,7 +526,8 @@ class IOSZhuyinIME : InputMethodService() {
             pageStart = start,
             selectedIndex = selectedCandidateIndex,
             hasMore = allCandidates.size > pageSize,
-            expanded = candidatesExpanded
+            expanded = candidatesExpanded,
+            composing = composingText.isNotEmpty()
         )
         view.setFinalPage(showFinalPage)
         view.refresh()
@@ -470,8 +541,8 @@ class IOSZhuyinIME : InputMethodService() {
     }
 
     private fun handleCandidatePress(candidateIndex: Int) {
-        if (showingPunctuationSuggestions && composingText.isEmpty()) {
-            allCandidates.getOrNull(candidateIndex)?.let(::commitPunctuationSuggestion)
+        if (showingNextWordSuggestions && composingText.isEmpty()) {
+            allCandidates.getOrNull(candidateIndex)?.let(::commitNextWordSuggestion)
         } else {
             commitSelectedCandidate(candidateIndexOverride = candidateIndex)
         }
@@ -620,7 +691,7 @@ class IOSZhuyinIME : InputMethodService() {
                     resetSelection = true,
                     syncEditorComposition = false
                 )
-                if (composingText.isEmpty()) showPunctuationSuggestions()
+                if (composingText.isEmpty()) showNextWordSuggestions()
                 if (provideFeedback) vibrateLight()
                 CandidateCommitResult.SUCCESS
             }
@@ -672,6 +743,15 @@ class IOSZhuyinIME : InputMethodService() {
     }
 
     private fun handleBackspaceDown() {
+        if (backspaceDismissedSuggestions) return
+        if (composingText.isEmpty() && showingNextWordSuggestions) {
+            stopBackspaceRepeat()
+            backspaceDismissedSuggestions = true
+            lastCommittedWord = ""
+            showNextWordSuggestions()
+            vibrateLight()
+            return
+        }
         backspaceRepeater.press()
     }
 
@@ -681,6 +761,7 @@ class IOSZhuyinIME : InputMethodService() {
 
     private fun stopBackspaceRepeat() {
         backspaceRepeater.release()
+        backspaceDismissedSuggestions = false
     }
 
     private fun handleBackspace() {
@@ -745,6 +826,7 @@ class IOSZhuyinIME : InputMethodService() {
                 cycleCandidate()
             }
         } else {
+            lastCommittedWord = ""
             if (safeEditorOperation("space commit") {
                     currentInputConnection?.commitText(" ", 1) == true
                 }
@@ -769,6 +851,7 @@ class IOSZhuyinIME : InputMethodService() {
 
     private fun handleReturn() {
         if (!drainComposing(recordLearning = true)) return
+        lastCommittedWord = ""
         val ic = currentInputConnection ?: return
         val info = currentInputEditorInfo
         val actionPlan = ImeBehavior.editorActionPlan(
@@ -809,7 +892,7 @@ class IOSZhuyinIME : InputMethodService() {
             return
         }
         keyboardView?.setMode(ZhuyinKeyboardView.Mode.ENGLISH)
-        refreshPunctuationSuggestionsForCurrentMode()
+        refreshNextWordSuggestionsForCurrentMode()
         vibrateLight()
     }
 
@@ -825,7 +908,7 @@ class IOSZhuyinIME : InputMethodService() {
                 else -> ZhuyinKeyboardView.Mode.NUMBER
             }
         )
-        refreshPunctuationSuggestionsForCurrentMode()
+        refreshNextWordSuggestionsForCurrentMode()
         vibrateLight()
     }
 
@@ -839,57 +922,128 @@ class IOSZhuyinIME : InputMethodService() {
                 ZhuyinKeyboardView.Mode.SYMBOL
             }
         )
-        refreshPunctuationSuggestionsForCurrentMode()
+        refreshNextWordSuggestionsForCurrentMode()
         vibrateLight()
     }
 
     private fun handleSymbolChar(ch: String) {
         if (!drainComposing(recordLearning = true)) return
+        lastCommittedWord = ""
         val committed = safeEditorOperation("symbol commit") {
             currentInputConnection?.commitText(ch, 1) == true
         }
         if (!committed) return
-        showPunctuationSuggestions()
+        showNextWordSuggestions()
         vibrateLight()
     }
 
-    private fun commitPunctuationSuggestion(punctuation: String) {
-        val committed = safeEditorOperation("punctuation suggestion commit") {
-            currentInputConnection?.commitText(punctuation, 1) == true
+    private fun commitNextWordSuggestion(word: String) {
+        val isNextWord = word in nextWordCandidates
+        // The editor may move its cursor without immediately delivering selection callbacks.
+        if (!isNextWord || !isAtLastCommittedWord()) {
+            lastCommittedWord = ""
+            showNextWordSuggestions()
+            return
+        }
+        val committed = safeEditorOperation("next word suggestion commit") {
+            currentInputConnection?.commitText(word, 1) == true
         }
         if (!committed) return
-        showPunctuationSuggestions()
+        if (word in NextWordSuggestions.PUNCTUATION_FALLBACK) {
+            lastCommittedWord = ""
+        } else if (personalizationAllowed) {
+            if (CandidateLearningSettings.isEnabled(this)) {
+                runCatching { learnContinuation(word); CandidateLearningSettings.notifyRecordsChanged(this) }
+            }
+            lastCommittedWord = word
+        } else lastCommittedWord = ""
+        showNextWordSuggestions()
         vibrateLight()
     }
 
-    private fun showPunctuationSuggestions() {
+    private fun showNextWordSuggestions() {
         if (composingText.isNotEmpty()) return
         val mode = keyboardView?.getMode() ?: return
-        allCandidates = if (
-            mode == ZhuyinKeyboardView.Mode.ENGLISH ||
-            mode == ZhuyinKeyboardView.Mode.HALF_WIDTH_NUMBER ||
-            mode == ZhuyinKeyboardView.Mode.HALF_WIDTH_SYMBOL
+        val previous = lastCommittedWord
+        nextWordCandidates = if (personalizationAllowed && mode == ZhuyinKeyboardView.Mode.ZHUYIN &&
+            isAtLastCommittedWord()
         ) {
-            PunctuationSuggestions.HALF_WIDTH
-        } else {
-            PunctuationSuggestions.FULL_WIDTH
-        }
+            val learned = runCatching {
+                userDictionaryStore.getLearnedCandidates(listOf(NextWordSuggestions.learningKey(previous)))
+            }.getOrDefault(emptyList())
+            NextWordSuggestions.suggest(previous, learned, NextWordTable.continuations(this, previous))
+                .ifEmpty { NextWordSuggestions.PUNCTUATION_FALLBACK }.toSet()
+        } else emptySet()
+        allCandidates = nextWordCandidates.toList()
         candidateChoices = emptyList()
-        showingPunctuationSuggestions = true
+        showingNextWordSuggestions = nextWordCandidates.isNotEmpty()
         selectedCandidateIndex = -1
         candidatePage = 0
         candidatesExpanded = false
         syncKeyboardView()
     }
 
-    private fun refreshPunctuationSuggestionsForCurrentMode() {
-        if (showingPunctuationSuggestions) showPunctuationSuggestions()
+    private fun isAtLastCommittedWord(): Boolean = lastCommittedWord.isNotEmpty() && runCatching {
+        currentInputConnection?.getSelectedText(0).isNullOrEmpty() &&
+            currentInputConnection?.getTextBeforeCursor(lastCommittedWord.length, 0)?.toString() == lastCommittedWord
+    }.getOrDefault(false)
+
+    private fun handleEditAction(label: String) {
+        if (editorKeyboardMode != EditorKeyboardMode.ZHUYIN || !drainComposing(recordLearning = false)) return
+        lastCommittedWord = ""
+        val connection = currentInputConnection ?: return
+        val handled = safeEditorOperation("edit tool $label") {
+            when (label) {
+                "全選" -> connection.performContextMenuAction(android.R.id.selectAll)
+                "複製" -> connection.performContextMenuAction(android.R.id.copy)
+                "剪下" -> connection.performContextMenuAction(android.R.id.cut)
+                "貼上" -> connection.performContextMenuAction(android.R.id.pasteAsPlainText)
+                "◀" -> CursorNavigation.move(connection, -1)
+                "▶" -> CursorNavigation.move(connection, 1)
+                else -> false
+            }
+        }
+        if (handled) vibrateLight()
+        showNextWordSuggestions()
+    }
+
+    private fun refreshNextWordSuggestionsForCurrentMode() {
+        if (composingText.isEmpty()) showNextWordSuggestions()
+    }
+
+    private fun openClipboard() {
+        if (editorKeyboardMode != EditorKeyboardMode.ZHUYIN || !personalizationAllowed) return
+        if (!drainComposing(recordLearning = false)) return
+        lastCommittedWord = ""
+        showNextWordSuggestions()
+        inputContainer?.openClipboard()
+    }
+
+    private fun pasteClipboard() {
+        if (editorKeyboardMode != EditorKeyboardMode.ZHUYIN) return
+        val text = runCatching {
+            val clip = (getSystemService(CLIPBOARD_SERVICE) as ClipboardManager).primaryClip
+            if (clip != null && clip.itemCount > 0) clip.getItemAt(0).text?.toString() else null
+        }.getOrNull()
+        if (text.isNullOrEmpty()) {
+            android.widget.Toast.makeText(this, "剪貼簿沒有可貼上的文字", android.widget.Toast.LENGTH_SHORT).show()
+            return
+        }
+        pasteHistoryText(text)
+    }
+
+    private fun pasteHistoryText(text: String) {
+        if (editorKeyboardMode != EditorKeyboardMode.ZHUYIN || !personalizationAllowed) return
+        if (!drainComposing(recordLearning = false)) return
+        lastCommittedWord = ""
+        safeEditorOperation("paste text") { currentInputConnection?.commitText(text, 1) == true }
+        showNextWordSuggestions()
     }
 
     private fun handleToggleToZhuyin() {
         keyboardView?.setMode(ZhuyinKeyboardView.Mode.ZHUYIN)
-        if (showingPunctuationSuggestions) {
-            showPunctuationSuggestions()
+        if (showingNextWordSuggestions) {
+            showNextWordSuggestions()
         } else {
             syncKeyboardView()
         }
@@ -904,7 +1058,7 @@ class IOSZhuyinIME : InputMethodService() {
             when (editorKeyboardMode) {
                 EditorKeyboardMode.ZHUYIN -> ZhuyinKeyboardView.Mode.ZHUYIN
                 EditorKeyboardMode.ENGLISH -> ZhuyinKeyboardView.Mode.ENGLISH
-                EditorKeyboardMode.NUMBER -> ZhuyinKeyboardView.Mode.NUMBER
+                EditorKeyboardMode.NUMBER -> ZhuyinKeyboardView.Mode.HALF_WIDTH_NUMBER
             }
         )
     }
@@ -933,7 +1087,7 @@ class IOSZhuyinIME : InputMethodService() {
             return false
         }
         resetToInitial()
-        showPunctuationSuggestions()
+        showNextWordSuggestions()
         if (provideFeedback) vibrateLight()
         return true
     }
@@ -990,6 +1144,7 @@ class IOSZhuyinIME : InputMethodService() {
 
     private fun resetToInitial() {
         composingText.clear()
+        nextWordCandidates = emptySet()
         editorCompositionPending = false
         clearExpectedCompositionUpdates()
         editorComposingStart = -1
@@ -999,7 +1154,7 @@ class IOSZhuyinIME : InputMethodService() {
         selectedCandidateIndex = -1
         candidatePage = 0
         candidatesExpanded = false
-        showingPunctuationSuggestions = false
+        showingNextWordSuggestions = false
         showFinalPage = false
         syncKeyboardView()
     }
@@ -1020,6 +1175,10 @@ class IOSZhuyinIME : InputMethodService() {
     }
 
     override fun onStartInput(attribute: EditorInfo?, restarting: Boolean) {
+        inputContainer?.closeClipboard()
+        lastCommittedWord = ""
+        nextWordCandidates = emptySet()
+        keyboardView?.cancelCursorGesture()
         stopBackspaceRepeat()
         super.onStartInput(attribute, restarting)
         sortedCandidateCache.clear()
@@ -1035,6 +1194,7 @@ class IOSZhuyinIME : InputMethodService() {
             inputType = attribute?.inputType,
             imeOptions = attribute?.imeOptions
         )
+        clipboardCaptureAllowed = personalizationAllowed
         editorKeyboardMode = ImeBehavior.keyboardMode(
             inputType = attribute?.inputType,
             imeOptions = attribute?.imeOptions
@@ -1046,6 +1206,7 @@ class IOSZhuyinIME : InputMethodService() {
     }
 
     override fun onStartInputView(info: EditorInfo?, restarting: Boolean) {
+        if (::clipboardHistory.isInitialized) clipboardHistory.captureCurrent()
         stopBackspaceRepeat()
         super.onStartInputView(info, restarting)
         keyboardView?.customTypeface = KeyboardFont.load(this)
@@ -1119,7 +1280,14 @@ class IOSZhuyinIME : InputMethodService() {
             editorCompositionPending = candidatesEnd < 0
             return
         }
-        if (performingEditorEdit || composingText.isEmpty()) return
+        if (performingEditorEdit) return
+        if (composingText.isEmpty()) {
+            if (nextWordCandidates.isNotEmpty() && !isAtLastCommittedWord()) {
+                lastCommittedWord = ""
+                showNextWordSuggestions()
+            }
+            return
+        }
 
         if (
             candidatesStart < 0 &&
@@ -1159,6 +1327,9 @@ class IOSZhuyinIME : InputMethodService() {
     }
 
     override fun onFinishInputView(finishingInput: Boolean) {
+        inputContainer?.closeClipboard()
+        lastCommittedWord = ""
+        keyboardView?.cancelCursorGesture()
         stopBackspaceRepeat()
         val drained = finishComposingForLifecycle()
         if (drained || finishingInput) resetToInitial()
@@ -1166,14 +1337,20 @@ class IOSZhuyinIME : InputMethodService() {
     }
 
     override fun onFinishInput() {
+        inputContainer?.closeClipboard()
+        lastCommittedWord = ""
+        keyboardView?.cancelCursorGesture()
         stopBackspaceRepeat()
         finishComposingForLifecycle()
         resetToInitial()
         personalizationAllowed = false
+        clipboardCaptureAllowed = true
         super.onFinishInput()
     }
 
     override fun onWindowHidden() {
+        inputContainer?.closeClipboard()
+        keyboardView?.cancelCursorGesture()
         stopBackspaceRepeat()
         if (finishComposingForLifecycle()) resetToInitial()
         super.onWindowHidden()
@@ -1181,6 +1358,7 @@ class IOSZhuyinIME : InputMethodService() {
 
     private fun applySystemTheme() {
         keyboardView?.applySystemTheme()
+        inputContainer?.refreshTheme()
         val imeWindow = window?.window ?: return
         val night = ThemePalette.isNightMode(this)
         @Suppress("DEPRECATION")
@@ -1200,6 +1378,11 @@ class IOSZhuyinIME : InputMethodService() {
     }
 
     override fun onKeyDown(keyCode: Int, event: KeyEvent): Boolean = when (keyCode) {
+        KeyEvent.KEYCODE_BACK -> if (inputContainer?.showingClipboard == true) {
+            inputContainer?.closeClipboard()
+            clipboardBackHandled = true
+            true
+        } else super.onKeyDown(keyCode, event)
         KeyEvent.KEYCODE_DEL -> {
             handleBackspaceDown()
             true
@@ -1216,6 +1399,10 @@ class IOSZhuyinIME : InputMethodService() {
     }
 
     override fun onKeyUp(keyCode: Int, event: KeyEvent): Boolean = when (keyCode) {
+        KeyEvent.KEYCODE_BACK -> if (clipboardBackHandled) {
+            clipboardBackHandled = false
+            true
+        } else super.onKeyUp(keyCode, event)
         KeyEvent.KEYCODE_DEL -> {
             handleBackspaceUp()
             true

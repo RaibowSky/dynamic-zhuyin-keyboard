@@ -68,3 +68,10 @@ source requires updating the pinned commit, checksums, notices, tests, and
 generated asset attribution together. No underlying source corpus is included.
 
 License text build input SHA-256 (`McBopomofo_LICENSE.txt`): `72ed32193b0c629def66df63791b2fb125946b593a3251380e6b949488f47b72`.
+
+## Next-word table (derived)
+
+`app/src/main/assets/next_word.tsv` is generated from `mcbopomofo_phrase.occ` by
+`tools/build_next_word_table.py` (`--check` verifies it is current). It only keeps, per
+short prefix, the most frequent one- or two-character continuations of phrases; no new
+upstream data is added, so the McBopomofo MIT notice above still applies.

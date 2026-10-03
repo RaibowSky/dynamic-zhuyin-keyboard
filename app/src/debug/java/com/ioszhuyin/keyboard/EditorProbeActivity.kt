@@ -5,13 +5,14 @@ import android.content.res.Configuration
 import android.os.Bundle
 import android.text.InputType
 import android.view.inputmethod.EditorInfo
-import android.widget.EditText
+import androidx.appcompat.widget.AppCompatEditText
 import android.widget.LinearLayout
 import android.widget.TextView
 
 /** Debug-only host for real IME checks; excluded from every release APK. */
 class EditorProbeActivity : Activity() {
     private lateinit var root: LinearLayout
+    private lateinit var selectionStatus: TextView
     override fun onCreate(state: Bundle?) {
         super.onCreate(state)
         root = LinearLayout(this).apply {
@@ -19,17 +20,26 @@ class EditorProbeActivity : Activity() {
             setPadding(36, 100, 36, 36)
         }
         root.addView(TextView(this).apply { text = "注音輸入測試"; textSize = 24f })
+        selectionStatus = TextView(this).apply { text = "游標：尚未選取輸入框"; textSize = 16f }
         for ((hint, type, options) in listOf(
             Triple("中文輸入", InputType.TYPE_CLASS_TEXT, EditorInfo.IME_ACTION_DONE),
             Triple("Password", InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_PASSWORD, 0),
             Triple("Email", InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_EMAIL_ADDRESS, 0),
             Triple("ASCII", InputType.TYPE_CLASS_TEXT, EditorInfo.IME_FLAG_FORCE_ASCII))) {
-            root.addView(EditText(this).apply {
+            root.addView(object : AppCompatEditText(this) {
+                override fun onSelectionChanged(start: Int, end: Int) {
+                    super.onSelectionChanged(start, end)
+                    if (::selectionStatus.isInitialized) {
+                        selectionStatus.text = "$hint 游標：$start/$end"
+                    }
+                }
+            }.apply {
                 this.hint = hint; inputType = type; imeOptions = options
                 textSize = 22f
                 setSingleLine()
             }, LinearLayout.LayoutParams(-1, 160))
         }
+        root.addView(selectionStatus)
         setContentView(root)
         themeColors()
     }

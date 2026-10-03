@@ -12,7 +12,6 @@ import android.view.inputmethod.InputMethodManager
 import android.widget.ArrayAdapter
 import android.widget.Button
 import android.widget.EditText
-import android.widget.HorizontalScrollView
 import android.widget.LinearLayout
 import android.widget.ListView
 import android.widget.ScrollView
@@ -44,6 +43,10 @@ class MainActivity : AppCompatActivity() {
     private var learningStatusGeneration: Long = 0
     private var listLoading = false
     private lateinit var palette: SettingsPalette
+    private val metricRefreshers = linkedMapOf<String, () -> Unit>()
+    private val metricsListener = SharedPreferences.OnSharedPreferenceChangeListener { _, key ->
+        if (KeyboardMetrics.isKeyboardMetricKey(key)) metricRefreshers.values.forEach { it() }
+    }
     private val learningPreferencesListener =
         SharedPreferences.OnSharedPreferenceChangeListener listener@ { _, key ->
             if (CandidateLearningSettings.isRecordsChange(key)) {
@@ -78,11 +81,14 @@ class MainActivity : AppCompatActivity() {
 
     override fun onStart() {
         super.onStart()
+        KeyboardMetrics.prefs(this).registerOnSharedPreferenceChangeListener(metricsListener)
+        metricRefreshers.values.forEach { it() }
         CandidateLearningSettings.registerListener(this, learningPreferencesListener)
         if (::adapter.isInitialized && ::searchInput.isInitialized) refreshList()
     }
 
     override fun onStop() {
+        KeyboardMetrics.prefs(this).unregisterOnSharedPreferenceChangeListener(metricsListener)
         CandidateLearningSettings.unregisterListener(this, learningPreferencesListener)
         super.onStop()
     }
@@ -121,6 +127,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun buildLayout() {
+        metricRefreshers.clear()
         val root = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             setPadding(dp(20), dp(20), dp(20), dp(20))
@@ -136,7 +143,7 @@ class MainActivity : AppCompatActivity() {
         root.addView(title, LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT)
 
         val subtitle = TextView(this).apply {
-            text = "字典管理"
+            text = "鍵盤設定與字典"
             textSize = 15f
             setTextColor(palette.subtitle)
             gravity = Gravity.CENTER
@@ -169,6 +176,12 @@ class MainActivity : AppCompatActivity() {
             }
         }, rowWeight())
         root.addView(fontRow)
+        val appearance = keyboardMetricsPanel().apply { visibility = android.view.View.GONE }
+        root.addView(button("鍵盤高度與外觀", palette.primary) {
+            appearance.visibility = if (appearance.visibility == android.view.View.VISIBLE)
+                android.view.View.GONE else android.view.View.VISIBLE
+        })
+        root.addView(appearance)
 
         statusText = TextView(this).apply {
             textSize = 14f
@@ -227,9 +240,6 @@ class MainActivity : AppCompatActivity() {
         fileRow.addView(button("匯出", palette.secondary) { chooseExportContent() }, rowWeight())
         root.addView(fileRow)
 
-        if (isDebugBuild()) {
-            root.addView(debugMetricsPanel())
-        }
 
         adapter = ArrayAdapter(this, android.R.layout.simple_list_item_activated_1, mutableListOf())
         listView = ListView(this).apply {
@@ -654,9 +664,9 @@ class MainActivity : AppCompatActivity() {
 
     private fun learningStatusCopy(enabled: Boolean, count: Int): String =
         if (enabled) {
-            "候選學習：開啟（$count 筆排序紀錄）"
+            "候選學習：開啟（$count 筆排序／下一詞紀錄）"
         } else {
-            "候選學習：暫停（保留 $count 筆既有排序紀錄）"
+            "候選學習：暫停（保留 $count 筆排序／下一詞紀錄）"
         }
 
     private fun dictionaryStatusText(): String =
@@ -669,11 +679,16 @@ class MainActivity : AppCompatActivity() {
     private fun searchInputOrEmpty(): String =
         if (::searchInput.isInitialized) searchInput.text.toString() else ""
 
-    private fun debugMetricsPanel(): LinearLayout {
+    private fun keyboardMetricsPanel(): LinearLayout {
         return LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             setPadding(0, dp(12), 0, dp(8))
             addView(sectionTitle("鍵盤版面調整"))
+            addView(TextView(this@MainActivity).apply {
+                text = "調整會自動儲存。下方留白可把鍵盤往上移；點試打框即可查看效果。"
+                setTextColor(palette.status)
+            })
+            addView(editText("點此試打，檢查鍵盤高度"))
 
             val presetRow = row()
             presetRow.addView(button("Pixel 預設", palette.debugPixel) {
@@ -689,15 +704,12 @@ class MainActivity : AppCompatActivity() {
             addView(metricSlider("按鍵高度", KeyboardMetrics.KEY_KEY_HEIGHT, 34f, 70f))
             addView(metricSlider("水平間距", KeyboardMetrics.KEY_HORIZONTAL_GAP, 0f, 14f))
             addView(metricSlider("垂直間距", KeyboardMetrics.KEY_VERTICAL_GAP, 0f, 14f))
-            addView(metricSlider("第一排偏移", KeyboardMetrics.KEY_ROW_OFFSET_1, 0f, 2f))
-            addView(metricSlider("第二排偏移", KeyboardMetrics.KEY_ROW_OFFSET_2, 0f, 2f))
-            addView(metricSlider("第三排偏移", KeyboardMetrics.KEY_ROW_OFFSET_3, 0f, 2f))
             addView(metricSlider("左右內距", KeyboardMetrics.KEY_HORIZONTAL_PADDING, 0f, 20f))
-            addView(metricSlider("上方內距", KeyboardMetrics.KEY_TOP_PADDING, 0f, 30f))
-            addView(metricSlider("下方內距", KeyboardMetrics.KEY_BOTTOM_PADDING, 0f, 30f))
+            addView(metricSlider("下方留白（鍵盤往上移）", KeyboardMetrics.KEY_BOTTOM_PADDING, 0f, 50f))
             addView(metricSlider("功能鍵寬度", KeyboardMetrics.KEY_FUNCTION_KEY_WIDTH, 0.7f, 2.4f))
             addView(metricSlider("空白鍵寬度比例", KeyboardMetrics.KEY_SPACEBAR_RATIO, 2.5f, 7f))
             addView(metricSlider("候選列高度", KeyboardMetrics.KEY_CANDIDATE_BAR_HEIGHT, 24f, 64f))
+            addView(metricSlider("候選字大小", KeyboardMetrics.KEY_CANDIDATE_FONT_SIZE, 14f, 28f))
         }
     }
 
@@ -727,6 +739,11 @@ class MainActivity : AppCompatActivity() {
             })
         }
         label.text = "$labelText: ${formatMetric(initial)}"
+        metricRefreshers[key] = {
+            val value = metricValue(KeyboardMetrics.current(this), key).coerceIn(min, max)
+            seek.progress = ((value - min) * SLIDER_SCALE).toInt()
+            label.text = "$labelText: ${formatMetric(value)}"
+        }
         return LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             addView(label)
@@ -757,6 +774,7 @@ class MainActivity : AppCompatActivity() {
         KeyboardMetrics.KEY_FUNCTION_KEY_WIDTH -> metrics.functionKeyWidth
         KeyboardMetrics.KEY_SPACEBAR_RATIO -> metrics.spacebarWidthRatio
         KeyboardMetrics.KEY_CANDIDATE_BAR_HEIGHT -> metrics.candidateBarHeight
+        KeyboardMetrics.KEY_CANDIDATE_FONT_SIZE -> metrics.candidateFontSize
         else -> 0f
     }
 
@@ -767,25 +785,20 @@ class MainActivity : AppCompatActivity() {
         LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             setPadding(0, 0, 0, dp(8))
+            // Eight equal columns so every key stays visible; no horizontal scrolling.
             addView(symbolRow(listOf("ㄅ", "ㄆ", "ㄇ", "ㄈ", "ㄉ", "ㄊ", "ㄋ", "ㄌ")))
-            addView(symbolRow(listOf("ㄍ", "ㄎ", "ㄏ", "ㄐ", "ㄑ", "ㄒ", "ㄓ", "ㄔ", "ㄕ", "ㄖ")))
-            addView(symbolRow(listOf("ㄗ", "ㄘ", "ㄙ", "ㄧ", "ㄨ", "ㄩ", "ㄚ", "ㄛ", "ㄜ", "ㄝ")))
-            addView(symbolRow(listOf("ㄞ", "ㄟ", "ㄠ", "ㄡ", "ㄢ", "ㄣ", "ㄤ", "ㄥ", "ㄦ")))
-            addView(symbolRow(listOf("ˉ", "ˊ", "ˇ", "ˋ", "˙", "退格", "清注音")))
+            addView(symbolRow(listOf("ㄍ", "ㄎ", "ㄏ", "ㄐ", "ㄑ", "ㄒ", "ㄓ", "ㄔ")))
+            addView(symbolRow(listOf("ㄕ", "ㄖ", "ㄗ", "ㄘ", "ㄙ", "ㄧ", "ㄨ", "ㄩ")))
+            addView(symbolRow(listOf("ㄚ", "ㄛ", "ㄜ", "ㄝ", "ㄞ", "ㄟ", "ㄠ", "ㄡ")))
+            addView(symbolRow(listOf("ㄢ", "ㄣ", "ㄤ", "ㄥ", "ㄦ", "ˉ", "ˊ", "ˇ")))
+            addView(symbolRow(listOf("ˋ", "˙", "退格", "清注音")))
         }
 
-    private fun symbolRow(symbols: List<String>): HorizontalScrollView {
-        val row = LinearLayout(this).apply {
+    private fun symbolRow(symbols: List<String>): LinearLayout =
+        LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
+            symbols.forEach { addView(symbolButton(it)) }
         }
-        symbols.forEach { symbol ->
-            row.addView(symbolButton(symbol))
-        }
-        return HorizontalScrollView(this).apply {
-            isHorizontalScrollBarEnabled = false
-            addView(row)
-        }
-    }
 
     private fun symbolButton(symbol: String): Button =
         Button(this).apply {
@@ -810,10 +823,10 @@ class MainActivity : AppCompatActivity() {
                     }
                 }
             }
-            layoutParams = LinearLayout.LayoutParams(
-                if (symbol.length == 1) dp(48) else dp(76),
-                dp(48)
-            ).apply {
+            minWidth = 0
+            minimumWidth = 0
+            setPadding(0, 0, 0, 0)
+            layoutParams = LinearLayout.LayoutParams(0, dp(48), if (symbol.length == 1) 1f else 3f).apply {
                 marginEnd = dp(6)
                 bottomMargin = dp(6)
             }
@@ -867,9 +880,6 @@ class MainActivity : AppCompatActivity() {
     private fun toast(message: String) {
         Toast.makeText(this, message, Toast.LENGTH_SHORT).show()
     }
-
-    private fun isDebugBuild(): Boolean =
-        (applicationInfo.flags and android.content.pm.ApplicationInfo.FLAG_DEBUGGABLE) != 0
 
     private fun applySystemThemeIfNeeded() {
         val next = ThemePalette.settings(this)

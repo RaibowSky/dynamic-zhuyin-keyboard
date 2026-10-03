@@ -58,6 +58,7 @@ class ZhuyinKeyboardView @JvmOverloads constructor(
     enum class Mode {
         ZHUYIN,
         ENGLISH,
+        EMOJI,
         NUMBER,
         SYMBOL,
         HALF_WIDTH_NUMBER,
@@ -69,7 +70,7 @@ class ZhuyinKeyboardView @JvmOverloads constructor(
     private var englishShifted: Boolean = false
     private var returnKeyLabel: String = "換行"
     fun setMode(m: Mode) {
-        mode = if (m == Mode.ZHUYIN && !zhuyinModeAllowed) Mode.ENGLISH else m
+        mode = if (m in setOf(Mode.ZHUYIN, Mode.EMOJI) && !zhuyinModeAllowed) Mode.ENGLISH else m
         if (mode != Mode.ZHUYIN) showFinalPage = false
         if (mode != Mode.ENGLISH) englishShifted = false
         refresh()
@@ -85,7 +86,7 @@ class ZhuyinKeyboardView @JvmOverloads constructor(
     fun setZhuyinModeAllowed(allowed: Boolean) {
         if (zhuyinModeAllowed == allowed) return
         zhuyinModeAllowed = allowed
-        if (!allowed && mode == Mode.ZHUYIN) {
+        if (!allowed && mode in setOf(Mode.ZHUYIN, Mode.EMOJI)) {
             mode = Mode.ENGLISH
             showFinalPage = false
         }
@@ -98,6 +99,7 @@ class ZhuyinKeyboardView @JvmOverloads constructor(
 
     /** 候選字 (從字典 + 頻率學習) */
     private var candidates: List<String> = emptyList()
+    private var composingActive = false
     private var candidatePageStart: Int = 0
     private var hasMoreCandidates: Boolean = false
     private var selectedCandidateIndex: Int = -1
@@ -108,12 +110,15 @@ class ZhuyinKeyboardView @JvmOverloads constructor(
         pageStart: Int,
         selectedIndex: Int,
         hasMore: Boolean,
-        expanded: Boolean
+        expanded: Boolean,
+        composing: Boolean = false
     ) {
         if (candidates != newCandidates || candidateExpanded != expanded) {
             candidateScrollOffset = 0f
         }
         candidates = newCandidates
+        composingActive = composing
+        if (composing || newCandidates.isNotEmpty()) editTools = false
         candidatePageStart = pageStart.coerceIn(0, newCandidates.size)
         selectedCandidateIndex = selectedIndex
         hasMoreCandidates = hasMore
@@ -133,6 +138,14 @@ class ZhuyinKeyboardView @JvmOverloads constructor(
     var onBackspace: (() -> Unit)? = null
     var onBackspaceRelease: (() -> Unit)? = null
     var onSpace: (() -> Unit)? = null
+    var onWidthToggle: (() -> Unit)? = null
+    var onEmoji: (() -> Unit)? = null
+    var onPaste: (() -> Unit)? = null
+    var onSettings: (() -> Unit)? = null
+    var onEditAction: ((String) -> Unit)? = null
+    private var editTools = false
+    var onCursorGestureStart: (() -> Boolean)? = null
+    var onCursorMove: ((Int) -> Unit)? = null
     var onReturn: (() -> Unit)? = null
     var onCandidateConfirm: (() -> Unit)? = null
     var onCandidatePress: ((Int) -> Unit)? = null
@@ -161,9 +174,10 @@ class ZhuyinKeyboardView @JvmOverloads constructor(
     private val paintToneText = Paint(Paint.ANTI_ALIAS_FLAG or Paint.SUBPIXEL_TEXT_FLAG)
 
     private val cornerRadius: Float get() = dp(metrics.cornerRadius)
-    private val candidateBarHeight: Float get() = dp(metrics.candidateBarHeight)
-    private val keyH: Float get() = dp(metrics.keyHeight)
-    private val controlH: Float get() = dp(metrics.controlHeight)
+    private var layoutHeightScale = 1f
+    private val candidateBarHeight: Float get() = dp(metrics.candidateBarHeight) * layoutHeightScale
+    private val keyH: Float get() = dp(metrics.keyHeight) * layoutHeightScale
+    private val controlH: Float get() = dp(metrics.controlHeight) * layoutHeightScale
 
     // ============================================================
     // 顏色
@@ -224,6 +238,7 @@ class ZhuyinKeyboardView @JvmOverloads constructor(
     }
 
     override fun onDetachedFromWindow() {
+        cancelCursorGesture()
         if (isBackspaceDown) {
             onBackspaceRelease?.invoke()
         }
@@ -267,6 +282,10 @@ class ZhuyinKeyboardView @JvmOverloads constructor(
     private val zhuyinKeys = mutableListOf<ZhuyinKey>()
     private var keyHitBoxes: List<KeyboardHitBox> = emptyList()
     private val controlKeys = mutableListOf<ControlKey>()
+    private data class ToolKey(val label: String, val rect: RectF)
+    private val toolKeys = mutableListOf<ToolKey>()
+    private var toolbarRect = RectF()
+    private val paintToolbar = Paint(Paint.ANTI_ALIAS_FLAG).apply { textAlign = Paint.Align.CENTER }
     private var candidateBarRect: RectF = RectF()
     private var candidateToggleRect: RectF = RectF()
     private data class CandidateCell(val candidateIndex: Int, val rect: RectF)
@@ -281,10 +300,15 @@ class ZhuyinKeyboardView @JvmOverloads constructor(
     private var candidateSwipeDirection = 0
     private val toneRects = mutableListOf<RectF>()
     private var systemBottomInset = 0f
+    internal val navigationBottomInset: Int get() = systemBottomInset.toInt()
 
     val keyboardContentTop: Float get() {
-        if (candidateBarRect.height() > 0f) return candidateBarRect.top
-        return zhuyinKeys.firstOrNull()?.rect?.top ?: 0f
+        val headerTop = when {
+            toolbarRect.height() > 0f -> toolbarRect.top
+            candidateBarRect.height() > 0f -> candidateBarRect.top
+            else -> return zhuyinKeys.firstOrNull()?.rect?.top ?: 0f
+        }
+        return (headerTop - dp(metrics.keyboardTopPadding) * layoutHeightScale).coerceAtLeast(0f)
     }
 
     // ============================================================
@@ -325,25 +349,47 @@ class ZhuyinKeyboardView @JvmOverloads constructor(
         val height = height.toFloat()
         if (width <= 0 || height <= 0) return
 
+        // Reserve editor space on short/landscape displays even with maximum settings.
+        val requestedHeight = metrics.keyboardTopPadding + metrics.candidateBarHeight + metrics.verticalGap +
+            metrics.keyHeight * 3 + metrics.verticalGap * 2 + metrics.controlHeight +
+            metrics.horizontalGap + metrics.keyboardBottomPadding
+        val availableKeyboardHeight = ((height - systemBottomInset) * 0.7f).coerceAtLeast(1f)
+        layoutHeightScale = min(1f, availableKeyboardHeight / dp(requestedHeight))
+
         val previousKeyLabels = zhuyinKeys.map { it.label }
         val previousPressedKeyIdx = pressedKeyIdx
         val previousDownKeyIdx = (downTarget as? TouchTarget.ZhuyinKey)?.idx
 
         val padX = dp(metrics.keyboardHorizontalPadding)
-        val padTopMetric = dp(metrics.keyboardTopPadding)
-        val padBottomMetric = dp(metrics.keyboardBottomPadding) + systemBottomInset
-        val rowSpacing = dp(metrics.verticalGap)
+        val padTopMetric = dp(metrics.keyboardTopPadding) * layoutHeightScale
+        val padBottomMetric = dp(metrics.keyboardBottomPadding) * layoutHeightScale + systemBottomInset
+        val rowSpacing = dp(metrics.verticalGap) * layoutHeightScale
         val keySpacing = dp(metrics.horizontalGap)
         val controlSpacing = dp(metrics.horizontalGap)
 
-        val candidateH = if (candidates.isNotEmpty()) candidateBarHeight + rowSpacing else 0f
-
-        val keyboardTotalH = keyH * 3 + rowSpacing * 2 + controlH + controlSpacing
-        val contentH = padTopMetric + candidateH + keyboardTotalH + padBottomMetric
+        val keyboardTotalH = keyH * 3 + rowSpacing * 2 + controlH + controlSpacing * layoutHeightScale
+        // One fixed-height header switches between tools and candidates without moving keys.
+        val contentH = padTopMetric + candidateBarHeight + rowSpacing + keyboardTotalH + padBottomMetric
         val padTop = (height - contentH).coerceAtLeast(0f) + padTopMetric
 
         var y = padTop
-        if (candidates.isNotEmpty()) {
+        val showingCandidates = composingActive || candidates.isNotEmpty()
+        toolbarRect = if (showingCandidates) RectF() else RectF(padX, y, width - padX, y + candidateBarHeight)
+        val toolLabels = when {
+            zhuyinModeAllowed && editTools -> EDIT_TOOL_LABELS
+            zhuyinModeAllowed -> listOf(
+            if (mode in setOf(Mode.ENGLISH, Mode.HALF_WIDTH_NUMBER, Mode.HALF_WIDTH_SYMBOL)) "半形" else "全形",
+            if (mode == Mode.EMOJI) "返回" else "😊", "剪貼簿", "編輯", "設定"
+            )
+            else -> listOf("設定")
+        }
+        toolKeys.clear()
+        val toolWidth = toolbarRect.width() / toolLabels.size
+        if (!showingCandidates) toolLabels.forEachIndexed { index, label ->
+            toolKeys += ToolKey(label, RectF(padX + index * toolWidth, y,
+                padX + (index + 1) * toolWidth, y + candidateBarHeight))
+        }
+        if (showingCandidates) {
             val candidateBottom = if (candidateExpanded) {
                 (height - padBottomMetric).coerceAtLeast(y + candidateBarHeight)
             } else {
@@ -353,6 +399,7 @@ class ZhuyinKeyboardView @JvmOverloads constructor(
             y += candidateBarRect.height() + rowSpacing
         } else {
             candidateBarRect = RectF()
+            y += candidateBarHeight + rowSpacing
         }
 
         if (candidateExpanded && candidateBarRect.height() > 0f) {
@@ -413,7 +460,7 @@ class ZhuyinKeyboardView @JvmOverloads constructor(
                 ?.let { TouchTarget.ZhuyinKey(it) }
         }
         y -= rowSpacing  // 最後一列不加分隔
-        y += controlSpacing
+        y += controlSpacing * layoutHeightScale
 
         // ABC / 注在本鍵盤內往返；系統導覽列保留切換其他輸入法的入口。
         controlKeys.clear()
@@ -431,7 +478,7 @@ class ZhuyinKeyboardView @JvmOverloads constructor(
                     returnLabel = returnKeyLabel
                 )
             )
-            mode == Mode.ENGLISH -> if (zhuyinModeAllowed) {
+            mode == Mode.ENGLISH || mode == Mode.EMOJI -> if (zhuyinModeAllowed) {
                 Pair(
                     listOf(ControlAction.NUMBER, ControlAction.TOGGLE_FINALS,
                         ControlAction.SPACE, ControlAction.RETURN),
@@ -498,7 +545,7 @@ class ZhuyinKeyboardView @JvmOverloads constructor(
     private fun updateTextSizes() {
         paintKeyText.textSize = min(keyH * 0.70f, dp(metrics.keyFontSize))
         paintControlText.textSize = min(controlH * 0.50f, dp(metrics.controlFontSize))
-        paintCandidateText.textSize = dp(metrics.candidateFontSize)
+        paintCandidateText.textSize = min(dp(metrics.candidateFontSize), candidateBarHeight * 0.8f)
         paintToneText.textSize = min(keyH * 0.55f, dp(metrics.toneFontSize))
     }
 
@@ -520,7 +567,7 @@ class ZhuyinKeyboardView @JvmOverloads constructor(
             )
         }
 
-        val columns = ImeBehavior.candidatePageSize(candidates)
+        val columns = min(candidates.size, ImeBehavior.candidatePageSize(candidates))
         val gridRight = if (hasMoreCandidates) {
             candidateBarRect.right - padInner - toggleWidth - gap
         } else {
@@ -563,6 +610,11 @@ class ZhuyinKeyboardView @JvmOverloads constructor(
     }
 
     private fun currentKeyRows(): List<KeyRowSpec> = when (mode) {
+        Mode.EMOJI -> listOf(
+            rowSpec(listOf("😀", "😄", "😂", "😊", "😍", "🥰", "😘", "😎", "🥳", "😭"), 0f),
+            rowSpec(listOf("😅", "🤣", "😢", "😡", "🤔", "🙏", "👍", "👏", "💪", "❤️"), 0f),
+            rowSpec(listOf("🎉", "🎂", "🎁", "✨", "🔥", "✅", "👋", "🌹", "☕", "⌫"), 0f)
+        )
         Mode.ZHUYIN -> {
             val sourceRows = if (showFinalPage) {
                 ZhuyinDynamicLayout.FINAL_PAGE_ROWS
@@ -643,6 +695,7 @@ class ZhuyinKeyboardView @JvmOverloads constructor(
     private fun columnCountForCurrentMode(): Int = when (mode) {
         Mode.ZHUYIN -> ZhuyinDynamicLayout.COLUMN_COUNT
         Mode.ENGLISH,
+        Mode.EMOJI,
         Mode.NUMBER,
         Mode.SYMBOL,
         Mode.HALF_WIDTH_NUMBER,
@@ -666,11 +719,7 @@ class ZhuyinKeyboardView @JvmOverloads constructor(
         paintToneText.typeface = bopomofoTypeface
 
         // 背景
-        val bgTop = when {
-            candidateBarRect.height() > 0 -> candidateBarRect.top
-            zhuyinKeys.isNotEmpty() -> zhuyinKeys.first().rect.top
-            else -> 0f
-        }
+        val bgTop = keyboardContentTop
         val bgBottom = if (controlKeys.isNotEmpty()) controlKeys.last().rect.bottom
                         else if (zhuyinKeys.isNotEmpty()) zhuyinKeys.last().rect.bottom
                         else height.toFloat()
@@ -685,9 +734,22 @@ class ZhuyinKeyboardView @JvmOverloads constructor(
             }
         }
 
+        paintToolbar.color = colorControlText
+        paintToolbar.textSize = dp(15f) * layoutHeightScale
+        paintToolbar.typeface = Typeface.DEFAULT
+        for (tool in toolKeys) {
+            drawRoundRect(canvas, tool.rect, palette.candidateBar, cornerRadius)
+            val cy = tool.rect.centerY() - (paintToolbar.ascent() + paintToolbar.descent()) / 2
+            canvas.drawText(tool.label, tool.rect.centerX(), cy, paintToolbar)
+        }
+
         // Candidate bar
         if (candidateBarRect.height() > 0) {
             drawRect(canvas, candidateBarRect, palette.candidateBar)
+            if (composingActive && candidates.isEmpty()) {
+                val cy = candidateBarRect.centerY() - (paintToolbar.ascent() + paintToolbar.descent()) / 2
+                canvas.drawText("無候選字", candidateBarRect.centerX(), cy, paintToolbar)
+            }
             canvas.save()
             canvas.clipRect(candidateBarRect)
             for (cell in candidateCells) {
@@ -766,7 +828,8 @@ class ZhuyinKeyboardView @JvmOverloads constructor(
                     drawRoundRect(canvas, k.rect, c, cornerRadius)
                     paintControlText.color = colorSpaceText
                     val cy = k.rect.centerY() - (paintControlText.ascent() + paintControlText.descent()) / 2
-                    canvas.drawText(k.label, k.rect.centerX(), cy, paintControlText)
+                    val label = if (spaceCursorGesture.active) "←  →" else k.label
+                    canvas.drawText(label, k.rect.centerX(), cy, paintControlText)
                 }
                 ControlAction.RETURN -> {
                     val c = if (isPressed) colorReturnBgPressed else colorReturnBg
@@ -838,8 +901,27 @@ class ZhuyinKeyboardView @JvmOverloads constructor(
     // ============================================================
     private var downTarget: TouchTarget? = null
     private var isBackspaceDown: Boolean = false
+    private val spaceCursorGesture = SpaceCursorGesture(
+        holdMillis = ViewConfiguration.getLongPressTimeout().toLong(),
+        touchSlop = ViewConfiguration.get(context).scaledTouchSlop.toFloat(),
+        stepPixels = dp(12f),
+        schedule = { task, delay -> postDelayed(task, delay) },
+        unschedule = { task -> removeCallbacks(task) },
+        activate = { onCursorGestureStart?.invoke() == true },
+        moveCursor = { steps -> onCursorMove?.invoke(steps) },
+        changed = { invalidate() }
+    )
+
+    fun cancelCursorGesture() {
+        if (spaceCursorGesture.ownsTouch) {
+            downTarget = null
+            pressedControlIdx = -1
+        }
+        spaceCursorGesture.cancel()
+    }
 
     private sealed class TouchTarget {
+        data class Tool(val label: String) : TouchTarget()
         data class Candidate(val idx: Int) : TouchTarget()
         object MorePage : TouchTarget()
         object CandidatePanel : TouchTarget()
@@ -849,8 +931,9 @@ class ZhuyinKeyboardView @JvmOverloads constructor(
     }
 
     override fun onTouchEvent(event: MotionEvent): Boolean {
-        when (event.action) {
+        when (event.actionMasked) {
             MotionEvent.ACTION_DOWN -> {
+                cancelCursorGesture()
                 val t = findTarget(event.x, event.y)
                 downTarget = t
                 candidateDragStartX = event.x
@@ -861,6 +944,9 @@ class ZhuyinKeyboardView @JvmOverloads constructor(
                 pressedKeyIdx = (t as? TouchTarget.ZhuyinKey)?.idx ?: -1
                 pressedControlIdx = (t as? TouchTarget.ControlKey)?.idx ?: -1
                 pressedToneIdx = (t as? TouchTarget.ToneKey)?.idx ?: -1
+                if (t is TouchTarget.ControlKey && controlKeys[t.idx].action == ControlAction.SPACE) {
+                    spaceCursorGesture.press(event.x, event.y)
+                }
                 if (isBackspaceTarget(t)) {
                     isBackspaceDown = true
                     onBackspace?.invoke()
@@ -871,6 +957,10 @@ class ZhuyinKeyboardView @JvmOverloads constructor(
                 return t != null
             }
             MotionEvent.ACTION_MOVE -> {
+                if (spaceCursorGesture.ownsTouch) {
+                    spaceCursorGesture.move(event.x, event.y)
+                    return true
+                }
                 if (!candidateExpanded &&
                     (downTarget is TouchTarget.Candidate ||
                         downTarget is TouchTarget.CandidatePanel)
@@ -920,6 +1010,18 @@ class ZhuyinKeyboardView @JvmOverloads constructor(
                 return true
             }
             MotionEvent.ACTION_UP -> {
+                if (spaceCursorGesture.ownsTouch) {
+                    spaceCursorGesture.move(event.x, event.y)
+                    val tap = spaceCursorGesture.release()
+                    if (tap && findTarget(event.x, event.y) == downTarget) {
+                        onSpace?.invoke()
+                        performClick()
+                    }
+                    downTarget = null
+                    pressedControlIdx = -1
+                    invalidate()
+                    return true
+                }
                 val t = findTarget(event.x, event.y)
                 if (candidateDragging && candidateSwipeDirection != 0) {
                     onCandidatePageSwipe?.invoke(candidateSwipeDirection)
@@ -941,6 +1043,7 @@ class ZhuyinKeyboardView @JvmOverloads constructor(
                 return true
             }
             MotionEvent.ACTION_CANCEL -> {
+                cancelCursorGesture()
                 if (isBackspaceDown) {
                     onBackspaceRelease?.invoke()
                 }
@@ -954,6 +1057,25 @@ class ZhuyinKeyboardView @JvmOverloads constructor(
                 invalidate()
                 return true
             }
+            MotionEvent.ACTION_POINTER_DOWN -> {
+                if (spaceCursorGesture.ownsTouch) {
+                    // Rolling onto the next key: an unfinished space tap still types,
+                    // and the new finger becomes the touch that fires on ACTION_UP.
+                    if (spaceCursorGesture.release()) {
+                        onSpace?.invoke()
+                        performClick()
+                    }
+                    val index = event.actionIndex
+                    val t = findTarget(event.getX(index), event.getY(index))
+                        ?.takeUnless { isBackspaceTarget(it) || it is TouchTarget.Candidate || it is TouchTarget.CandidatePanel }
+                    downTarget = t
+                    pressedKeyIdx = (t as? TouchTarget.ZhuyinKey)?.idx ?: -1
+                    pressedControlIdx = (t as? TouchTarget.ControlKey)?.idx ?: -1
+                    pressedToneIdx = (t as? TouchTarget.ToneKey)?.idx ?: -1
+                    invalidate()
+                    return true
+                }
+            }
         }
         return super.onTouchEvent(event)
     }
@@ -964,6 +1086,7 @@ class ZhuyinKeyboardView @JvmOverloads constructor(
     }
 
     private fun findTarget(x: Float, y: Float): TouchTarget? {
+        toolKeys.firstOrNull { it.rect.contains(x, y) }?.let { return TouchTarget.Tool(it.label) }
         if (candidateBarRect.height() > 0 && candidateBarRect.contains(x, y)) {
             if (candidateToggleRect.contains(x, y)) {
                 return TouchTarget.MorePage
@@ -991,6 +1114,15 @@ class ZhuyinKeyboardView @JvmOverloads constructor(
 
     private fun handleTarget(t: TouchTarget) {
         when (t) {
+            is TouchTarget.Tool -> when (t.label) {
+                "全形", "半形" -> onWidthToggle?.invoke()
+                "😊", "返回" -> onEmoji?.invoke()
+                "剪貼簿" -> onPaste?.invoke()
+                "設定" -> onSettings?.invoke()
+                "編輯" -> { editTools = true; refresh() }
+                "完成" -> { editTools = false; refresh() }
+                in EDIT_ACTIONS -> onEditAction?.invoke(t.label)
+            }
             is TouchTarget.Candidate -> {
                 if (t.idx in candidates.indices) onCandidatePress?.invoke(t.idx)
             }
@@ -1061,6 +1193,8 @@ class ZhuyinKeyboardView @JvmOverloads constructor(
     private fun dp(px: Int): Float = px * resources.displayMetrics.density
 
     companion object {
+        private val EDIT_ACTIONS = setOf("全選", "複製", "剪下", "貼上", "◀", "▶")
+        private val EDIT_TOOL_LABELS = listOf("完成") + EDIT_ACTIONS.toList()
         private const val MIN_KEY_HIT_SLOP_DP = 6f
     }
 }

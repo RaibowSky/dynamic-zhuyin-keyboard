@@ -1,6 +1,6 @@
 # Privacy Policy
 
-Last updated: 2026-07-17
+Last updated: 2026-10-04
 
 This policy applies to the Android input method "Dynamic Zhuyin Keyboard".
 
@@ -20,6 +20,27 @@ The keyboard does not transmit typed text, candidates, passwords, account
 information, or other input content over the network.
 
 ## Local Data
+
+Since 1.2.0, the keyboard also records adjacent candidate selections locally for next-word
+suggestions, using the same learning pause, clear, and export controls. Password and
+no-personalized-learning fields do not use these records.
+
+Since 1.2.0, the Clipboard panel offers optional local text history, off by default.
+After enabling Save history, the input method records the first plain-text item when it
+receives clipboard changes or opens the keyboard. It cannot recover older clipboard items
+or guarantee capture while its process is stopped. Items marked sensitive by the source app,
+blank text, and items over 20,000 UTF-16 code units are excluded. Capture is suppressed while
+the active editor is a password or no-personalized-learning field. These checks cannot
+identify all sensitive text copied by other apps.
+
+History is stored in a private local database, separate from dictionary learning and exports.
+Unpinned history is limited to 50 items, and items older than one hour are removed (cleanup is not scheduled); cleanup runs on history
+access or changes and periodically while the panel is open. Up to 50 pinned items remain
+until unpinned or explicitly deleted. Low-memory process termination does not erase the
+stored history. Turning history off stops new capture without deleting existing items.
+The panel provides individual deletion and Clear unpinned. Uninstalling the app or clearing
+its data removes pins too. Images and content URIs are not collected. Paste current content
+reads the first text item only when tapped and does not require history to be enabled.
 
 The keyboard may store local candidate selection frequency on the device to
 adjust candidate ordering. The app does not upload this data. Android cloud

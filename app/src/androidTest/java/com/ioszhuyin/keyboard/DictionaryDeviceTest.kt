@@ -7,6 +7,26 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class DictionaryDeviceTest {
+    @Test fun nextWordLearningIsLocalExportOptInAndClearable() {
+        val context = isolatedContext()
+        try {
+            UserDictionaryStore(context).use { store ->
+                val key = NextWordSuggestions.learningKey("今天")
+                store.recordSelection(key, "測試", 3)
+                store.recordSelection(key, "下午")
+                assertEquals(listOf("測試", "下午"), store.getLearnedCandidates(listOf(key)))
+                assertFalse(store.exportToJson().contains(key))
+                val backup = store.exportToJson(includeLearning = true)
+                assertTrue(backup.contains(key))
+                store.clearLearning()
+                assertTrue(store.getLearnedCandidates(listOf(key)).isEmpty())
+                assertEquals(2, store.importFromText(backup).learning)
+                assertEquals("測試", store.getLearnedCandidates(listOf(key)).first())
+                assertTrue(store.getLearnedCandidates(listOf("ㄐㄧㄣㄊㄧㄢ")).isEmpty())
+            }
+        } finally { context.filesDir.deleteRecursively() }
+    }
+
     private fun isolatedContext(): android.content.Context {
         val base = InstrumentationRegistry.getInstrumentation().targetContext
         val root = java.io.File(base.cacheDir, "device-tests-${System.nanoTime()}").apply { mkdirs() }

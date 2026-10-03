@@ -1,6 +1,6 @@
 # 動態注音鍵盤（Dynamic Zhuyin Keyboard）
 
-## 📥 [下載 Android APK（v1.1.1）](https://github.com/RaibowSky/dynamic-zhuyin-keyboard/releases/download/v1.1.1/dynamic-zhuyin-1.1.1.apk)
+## 📥 [下載 Android APK（v1.2.0）](https://github.com/RaibowSky/dynamic-zhuyin-keyboard/releases/download/v1.2.0/dynamic-zhuyin-1.2.0.apk)
 
 **手機使用者點上方連結即可下載安裝檔，需要 Android 7.0 以上。**
 下載後開啟 `.apk` 安裝，再開啟「動態注音鍵盤」，依序點選「啟用鍵盤」與「切換鍵盤」。
@@ -89,7 +89,8 @@ Android 模擬器實際執行畫面：
 
 ## Roadmap 與已知限制
 
-- 整句排序採用離線詞頻順序、詞長與本機偏好，沒有網路模型或提交後的下一詞預測。
+- 1.2.0 起：長按空白左右滑動移動游標、全／半形符號、常用 Emoji、剪貼簿歷史／釘選與公開版面調整。剪貼簿歷史需自行開啟，未釘選最多 50 筆、超過 1 小時者於下次使用剪貼簿時清除；釘選不自動清除。詳見 [功能與驗證](docs/KEYBOARD-FEEDBACK.md)。
+- 整句排序採用離線詞頻順序、詞長與本機偏好，沒有網路模型。另提供小型常見接續詞與本機學習的下一詞提示，尚非完整語境預測。
 - 每個音節位置保留最多 9 條解碼路徑，詞邊最多 16 音節；整句長度沒有 3 音節限制。
 - 自訂字型支援 TTF／OTF（上限 20 MB）；缺字會退回內建／系統字型。系統字型清單仍待研究。
 - 裝置廠牌、較舊 Android 版本與實體裝置的持續測試仍需要回報。
