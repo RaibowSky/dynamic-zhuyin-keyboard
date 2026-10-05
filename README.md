@@ -1,9 +1,19 @@
 # 動態注音鍵盤（Dynamic Zhuyin Keyboard）
 
-## 📥 [下載 Android APK（v1.2.0）](https://github.com/RaibowSky/dynamic-zhuyin-keyboard/releases/download/v1.2.0/dynamic-zhuyin-1.2.0.apk)
+## 📥 透過 Google Play 參加測試與下載
 
-**手機使用者點上方連結即可下載安裝檔，需要 Android 7.0 以上。**
-下載後開啟 `.apk` 安裝，再開啟「動態注音鍵盤」，依序點選「啟用鍵盤」與「切換鍵盤」。
+**需要 Android 7.0 以上。請使用同一個 Google 帳號依序完成以下步驟：**
+
+1. [加入測試者 Google 群組](https://groups.google.com/g/dynamic-zhuyin-keyboard)。
+2. [開啟 Google Play 測試頁面](https://play.google.com/apps/testing/dynamic.zhuyin.keyboard)，選擇加入測試。
+3. [前往 Google Play 商店下載](https://play.google.com/store/apps/details?id=dynamic.zhuyin.keyboard)。
+
+若測試頁面或商店顯示無法存取，請先確認已加入群組、完成加入測試，且網頁與手機的 Google Play 使用同一個帳號。
+安裝後開啟「動態注音鍵盤」，依序點選「啟用鍵盤」與「切換鍵盤」。
+
+### 直接下載 APK
+
+也可[下載 Android APK（v1.2.0）](https://github.com/RaibowSky/dynamic-zhuyin-keyboard/releases/download/v1.2.0/dynamic-zhuyin-1.2.0.apk)，下載後開啟 `.apk` 安裝。
 
 [最新版本與更新說明](https://github.com/RaibowSky/dynamic-zhuyin-keyboard/releases/latest) · [安裝與舊版升級說明](#安裝)
 
@@ -38,10 +48,17 @@
 
 ## 安裝
 
+Google Play 測試版請依照[上方步驟](#-透過-google-play-參加測試與下載)加入群組、參加測試並安裝。
 正式簽署 APK 與 checksum 請見 [Releases](https://github.com/RaibowSky/dynamic-zhuyin-keyboard/releases/latest)。
 Android 7.0 以上可安裝。1.1.1 起內建英文鍵盤，不再需要另一套輸入法來輸入英文。
+
+Google Play 版使用新的應用程式 ID `dynamic.zhuyin.keyboard`。從舊版 `com.ioszhuyin.keyboard` 轉換時，
+Android 會將它視為另一個 App：請先在舊版匯出使用者詞典，再於新版匯入，並重新啟用與切換鍵盤。
+設定與剪貼簿歷史不會自動轉移；匯出前請勿移除舊版。
+
 舊 Build Week debug 版簽章不同，轉換前請先匯出字典，再移除舊版、安裝正式版。
-後續正式版沿用同一簽章，可直接更新。[發版與版本規則](docs/RELEASING.md)。
+直接更新需使用相同應用程式 ID 與相容簽章；Google Play 與直接下載的 APK 不保證能互相覆蓋安裝。
+詳見[發版與版本規則](docs/RELEASING.md)。
 
 也可以從原始碼自行建置：
 

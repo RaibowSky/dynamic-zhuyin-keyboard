@@ -1,9 +1,19 @@
 # Dynamic Zhuyin Keyboard for Android
 
-## 📥 [Download Android APK (v1.2.0)](https://github.com/RaibowSky/dynamic-zhuyin-keyboard/releases/download/v1.2.0/dynamic-zhuyin-1.2.0.apk)
+## 📥 Join the test and download on Google Play
 
-**Tap the link above on your phone to download the installer. Requires Android 7.0+.**
-Open the downloaded `.apk` to install, then open Dynamic Zhuyin Keyboard and use its enable-keyboard and switch-keyboard buttons.
+**Requires Android 7.0+. Complete these steps using the same Google account:**
+
+1. [Join the testers' Google Group](https://groups.google.com/g/dynamic-zhuyin-keyboard).
+2. [Open the Google Play testing page](https://play.google.com/apps/testing/dynamic.zhuyin.keyboard) and opt in to the test.
+3. [Download from the Google Play store](https://play.google.com/store/apps/details?id=dynamic.zhuyin.keyboard).
+
+If the testing page or store listing is unavailable, check that you have joined the group, opted in to the test, and are using the same Google account on the web and in Google Play on your phone.
+After installation, open Dynamic Zhuyin Keyboard and use its enable-keyboard and switch-keyboard buttons.
+
+### Direct APK download
+
+You can also [download the Android APK (v1.2.0)](https://github.com/RaibowSky/dynamic-zhuyin-keyboard/releases/download/v1.2.0/dynamic-zhuyin-1.2.0.apk) and open the downloaded `.apk` to install it.
 
 [Latest release and release notes](https://github.com/RaibowSky/dynamic-zhuyin-keyboard/releases/latest) · [Installation and upgrades](#installation)
 
@@ -44,11 +54,19 @@ movement while offering candidates from a bundled on-device dictionary.
 
 ## Installation
 
+For the Google Play test, follow the [steps above](#-join-the-test-and-download-on-google-play) to join the group, opt in, and install.
 Download the signed APK and checksum from [Releases](https://github.com/RaibowSky/dynamic-zhuyin-keyboard/releases/latest).
 Requires Android 7.0+. Version 1.1.1 restores built-in English, so another keyboard is no longer required for English input.
+
+The Google Play version uses the new application ID `dynamic.zhuyin.keyboard`.
+Android treats it as a separate app from the previous `com.ioszhuyin.keyboard` version:
+export your user dictionary from the old app, import it into the new app, and enable/select the new keyboard.
+Settings and clipboard history do not transfer automatically. Do not uninstall the old app before exporting.
+
 The old Build Week debug build has a different signature: export your dictionary,
-uninstall the demo, then install stable. Future stable builds use the same signing
-identity and support normal updates. See [release/version policy](docs/RELEASING.md).
+uninstall the demo, then install stable. In-place updates require the same application ID and a compatible signing certificate;
+Google Play builds and directly downloaded APKs are not guaranteed to update each other.
+See [release/version policy](docs/RELEASING.md).
 
 You can also build from source:
 
