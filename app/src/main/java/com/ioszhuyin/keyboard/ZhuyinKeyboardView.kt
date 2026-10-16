@@ -4,6 +4,7 @@ import android.content.Context
 import android.content.SharedPreferences
 import android.graphics.*
 import android.content.res.Configuration
+import android.media.AudioManager
 import android.os.Build
 import android.util.AttributeSet
 import android.view.MotionEvent
@@ -157,6 +158,8 @@ class ZhuyinKeyboardView @JvmOverloads constructor(
     var onSymbolChar: ((String) -> Unit)? = null  // 數字/符號模式直接 commit 字元
     var onToggleToZhuyin: (() -> Unit)? = null  // 數字/符號模式切回注音
     var onToneSelected: ((String) -> Unit)? = null
+    /** Fired at finger-down, before dictionary or editor work, so the press feels immediate. */
+    var onKeyFeedback: (() -> Unit)? = null
 
     // ============================================================
     // Paints
@@ -238,15 +241,7 @@ class ZhuyinKeyboardView @JvmOverloads constructor(
     }
 
     override fun onDetachedFromWindow() {
-        cancelCursorGesture()
-        if (isBackspaceDown) {
-            onBackspaceRelease?.invoke()
-        }
-        pressedKeyIdx = -1
-        pressedControlIdx = -1
-        pressedToneIdx = -1
-        downTarget = null
-        isBackspaceDown = false
+        cancelAllContacts()
         metricsPrefs.unregisterOnSharedPreferenceChangeListener(metricsListener)
         super.onDetachedFromWindow()
     }
@@ -281,6 +276,7 @@ class ZhuyinKeyboardView @JvmOverloads constructor(
 
     private val zhuyinKeys = mutableListOf<ZhuyinKey>()
     private var keyHitBoxes: List<KeyboardHitBox> = emptyList()
+    private var controlHitBoxes: List<KeyboardHitBox> = emptyList()
     private val controlKeys = mutableListOf<ControlKey>()
     private data class ToolKey(val label: String, val rect: RectF)
     private val toolKeys = mutableListOf<ToolKey>()
@@ -293,11 +289,6 @@ class ZhuyinKeyboardView @JvmOverloads constructor(
     private var candidateContentHeight = 0f
     private var candidateScrollOffset = 0f
     private val candidateTouchSlop = ViewConfiguration.get(context).scaledTouchSlop.toFloat()
-    private var candidateDragStartY = 0f
-    private var candidateDragStartX = 0f
-    private var candidateDragStartOffset = 0f
-    private var candidateDragging = false
-    private var candidateSwipeDirection = 0
     private val toneRects = mutableListOf<RectF>()
     private var systemBottomInset = 0f
     internal val navigationBottomInset: Int get() = systemBottomInset.toInt()
@@ -358,7 +349,6 @@ class ZhuyinKeyboardView @JvmOverloads constructor(
 
         val previousKeyLabels = zhuyinKeys.map { it.label }
         val previousPressedKeyIdx = pressedKeyIdx
-        val previousDownKeyIdx = (downTarget as? TouchTarget.ZhuyinKey)?.idx
 
         val padX = dp(metrics.keyboardHorizontalPadding)
         val padTopMetric = dp(metrics.keyboardTopPadding) * layoutHeightScale
@@ -405,6 +395,7 @@ class ZhuyinKeyboardView @JvmOverloads constructor(
         if (candidateExpanded && candidateBarRect.height() > 0f) {
             zhuyinKeys.clear()
             keyHitBoxes = emptyList()
+            controlHitBoxes = emptyList()
             controlKeys.clear()
             toneRects.clear()
             pressedKeyIdx = -1
@@ -434,31 +425,12 @@ class ZhuyinKeyboardView @JvmOverloads constructor(
             }
             y += keyH + rowSpacing
         }
-        keyHitBoxes = zhuyinKeys.map { key ->
-            KeyboardHitBox(
-                left = key.rect.left,
-                top = key.rect.top,
-                right = key.rect.right,
-                bottom = key.rect.bottom,
-                enabled = key.label.isNotEmpty()
-            )
-        }
         val currentKeyLabels = zhuyinKeys.map { it.label }
         pressedKeyIdx = PressedKeyRemapping.remapIndex(
             previousKeyLabels,
             currentKeyLabels,
             previousPressedKeyIdx
         )
-        if (isBackspaceDown && previousDownKeyIdx != null) {
-            val remappedDownKeyIdx = PressedKeyRemapping.remapIndex(
-                previousKeyLabels,
-                currentKeyLabels,
-                previousDownKeyIdx
-            )
-            downTarget = remappedDownKeyIdx
-                .takeIf { it >= 0 }
-                ?.let { TouchTarget.ZhuyinKey(it) }
-        }
         y -= rowSpacing  // 最後一列不加分隔
         y += controlSpacing * layoutHeightScale
 
@@ -538,8 +510,77 @@ class ZhuyinKeyboardView @JvmOverloads constructor(
 
         // 聲調面板: AFTER_FINAL 時聲調在 controlKeys 內 (iOS 26 風格), 不需要額外 toneRects
         toneRects.clear()
+        val keyTop = zhuyinKeys.minOfOrNull { it.rect.top } ?: y
+        val keyBottom = zhuyinKeys.maxOfOrNull { it.rect.bottom } ?: y
+        val controlTop = controlKeys.minOfOrNull { it.rect.top } ?: (height - systemBottomInset)
+        val rowSplit = if (zhuyinKeys.isNotEmpty() && controlKeys.isNotEmpty()) {
+            (keyBottom + controlTop) / 2f
+        } else {
+            height - systemBottomInset
+        }
+        keyHitBoxes = KeyboardHitTesting.expandEnabledHits(
+            boxes = zhuyinKeys.map { key ->
+                KeyboardHitBox(
+                    left = key.rect.left,
+                    top = key.rect.top,
+                    right = key.rect.right,
+                    bottom = key.rect.bottom,
+                    enabled = key.label.isNotEmpty()
+                )
+            },
+            rows = zhuyinKeys.map { it.row },
+            leftBound = 0f,
+            rightBound = width.toFloat(),
+            topBound = keyTop - rowSpacing,
+            bottomBound = rowSplit
+        )
+        controlHitBoxes = KeyboardHitTesting.expandEnabledHits(
+            boxes = controlKeys.map { key ->
+                KeyboardHitBox(
+                    left = key.rect.left,
+                    top = key.rect.top,
+                    right = key.rect.right,
+                    bottom = key.rect.bottom,
+                    enabled = true
+                )
+            },
+            rows = List(controlKeys.size) { 0 },
+            leftBound = 0f,
+            rightBound = width.toFloat(),
+            topBound = rowSplit,
+            bottomBound = height - systemBottomInset
+        )
+        remapHeldContacts(previousKeyLabels, currentKeyLabels)
         layoutCandidateCells()
         updateTextSizes()
+    }
+
+    /** Keep a finger attached to the label it pressed when a page change moves that key. */
+    private fun remapHeldContacts(previousKeyLabels: List<String>, currentKeyLabels: List<String>) {
+        for (contact in contacts.values) {
+            when (val target = contact.target) {
+                is TouchTarget.ZhuyinKey -> {
+                    val previousIndex = previousKeyLabels.indexOf(target.label).takeIf { it >= 0 }
+                        ?: target.idx
+                    contact.target = target.copy(
+                        idx = PressedKeyRemapping.remapIndex(
+                            previousKeyLabels,
+                            currentKeyLabels,
+                            previousIndex
+                        )
+                    )
+                }
+                is TouchTarget.ControlKey -> {
+                    contact.target = target.copy(
+                        idx = controlKeys.indexOfFirst { it.action == target.action }
+                    )
+                }
+                else -> Unit
+            }
+        }
+        if (contacts.isNotEmpty()) {
+            applyHighlight(contacts.values.lastOrNull { !it.resolved }?.target)
+        }
     }
 
     private fun updateTextSizes() {
@@ -898,9 +939,27 @@ class ZhuyinKeyboardView @JvmOverloads constructor(
 
     // ============================================================
     // 觸控
+    // 每個手指各自記住按下的鍵。手指抬起時，短距離滾動仍算原鍵；
+    // 明顯滑到另一鍵才改送那一鍵；滑出鍵盤則取消。
     // ============================================================
-    private var downTarget: TouchTarget? = null
-    private var isBackspaceDown: Boolean = false
+    private class Contact(
+        val pointerId: Int,
+        val downX: Float,
+        val downY: Float,
+        var target: TouchTarget?,
+        var trackingSpace: Boolean,
+        var hapticArmed: Boolean,
+        var backspaceEngaged: Boolean,
+        var resolved: Boolean = false,
+        var candidateDragging: Boolean,
+        var candidateSwipeDirection: Int,
+        val candidateDragStartX: Float,
+        val candidateDragStartY: Float,
+        val candidateDragStartOffset: Float
+    )
+
+    private val contacts = LinkedHashMap<Int, Contact>()
+    private var committingContact: Contact? = null
     private val spaceCursorGesture = SpaceCursorGesture(
         holdMillis = ViewConfiguration.getLongPressTimeout().toLong(),
         touchSlop = ViewConfiguration.get(context).scaledTouchSlop.toFloat(),
@@ -914,10 +973,25 @@ class ZhuyinKeyboardView @JvmOverloads constructor(
 
     fun cancelCursorGesture() {
         if (spaceCursorGesture.ownsTouch) {
-            downTarget = null
+            contacts.values.filter { it.trackingSpace }.forEach { contact ->
+                contact.trackingSpace = false
+                contact.resolved = true
+                contact.target = null
+            }
             pressedControlIdx = -1
         }
         spaceCursorGesture.cancel()
+    }
+
+    private fun cancelAllContacts() {
+        val releaseBackspace = contacts.values.any { it.backspaceEngaged }
+        contacts.clear()
+        committingContact = null
+        if (releaseBackspace) onBackspaceRelease?.invoke()
+        spaceCursorGesture.cancel()
+        pressedKeyIdx = -1
+        pressedControlIdx = -1
+        pressedToneIdx = -1
     }
 
     private sealed class TouchTarget {
@@ -925,159 +999,199 @@ class ZhuyinKeyboardView @JvmOverloads constructor(
         data class Candidate(val idx: Int) : TouchTarget()
         object MorePage : TouchTarget()
         object CandidatePanel : TouchTarget()
-        data class ZhuyinKey(val idx: Int) : TouchTarget()
-        data class ControlKey(val idx: Int) : TouchTarget()
+        data class ZhuyinKey(val idx: Int, val label: String) : TouchTarget()
+        data class ControlKey(val idx: Int, val action: ControlAction) : TouchTarget()
         data class ToneKey(val idx: Int) : TouchTarget()
     }
 
     override fun onTouchEvent(event: MotionEvent): Boolean {
         when (event.actionMasked) {
-            MotionEvent.ACTION_DOWN -> {
-                cancelCursorGesture()
-                val t = findTarget(event.x, event.y)
-                downTarget = t
-                candidateDragStartX = event.x
-                candidateDragStartY = event.y
-                candidateDragStartOffset = candidateScrollOffset
-                candidateDragging = false
-                candidateSwipeDirection = 0
-                pressedKeyIdx = (t as? TouchTarget.ZhuyinKey)?.idx ?: -1
-                pressedControlIdx = (t as? TouchTarget.ControlKey)?.idx ?: -1
-                pressedToneIdx = (t as? TouchTarget.ToneKey)?.idx ?: -1
-                if (t is TouchTarget.ControlKey && controlKeys[t.idx].action == ControlAction.SPACE) {
-                    spaceCursorGesture.press(event.x, event.y)
-                }
-                if (isBackspaceTarget(t)) {
-                    isBackspaceDown = true
-                    onBackspace?.invoke()
-                } else {
-                    isBackspaceDown = false
-                }
-                invalidate()
-                return t != null
+            MotionEvent.ACTION_DOWN,
+            MotionEvent.ACTION_POINTER_DOWN -> {
+                if (event.actionMasked == MotionEvent.ACTION_DOWN) cancelAllContacts()
+                val index = event.actionIndex
+                return beginContact(event.getPointerId(index), event.getX(index), event.getY(index))
             }
             MotionEvent.ACTION_MOVE -> {
-                if (spaceCursorGesture.ownsTouch) {
-                    spaceCursorGesture.move(event.x, event.y)
-                    return true
-                }
-                if (!candidateExpanded &&
-                    (downTarget is TouchTarget.Candidate ||
-                        downTarget is TouchTarget.CandidatePanel)
-                ) {
-                    val dragX = event.x - candidateDragStartX
-                    val dragY = event.y - candidateDragStartY
-                    if (candidateDragging ||
-                        (abs(dragX) > candidateTouchSlop && abs(dragX) > abs(dragY))
-                    ) {
-                        candidateDragging = true
-                        candidateSwipeDirection = if (dragX < 0f) 1 else -1
-                        invalidate()
-                        return true
-                    }
-                }
-                if (candidateExpanded && candidateBarRect.contains(event.x, event.y) &&
-                    (downTarget is TouchTarget.Candidate ||
-                        downTarget is TouchTarget.CandidatePanel)
-                ) {
-                    val dragDistance = event.y - candidateDragStartY
-                    if (candidateDragging || abs(dragDistance) > candidateTouchSlop) {
-                        candidateDragging = true
-                        candidateScrollOffset = CandidatePanelBehavior.clampScroll(
-                            candidateDragStartOffset - dragDistance,
-                            candidateContentHeight,
-                            candidateBarRect.height()
-                        )
-                        layoutCandidateCells()
-                        invalidate()
-                        return true
-                    }
-                }
-                val t = findTarget(event.x, event.y)
-                val newP = (t as? TouchTarget.ZhuyinKey)?.idx ?: -1
-                val newC = (t as? TouchTarget.ControlKey)?.idx ?: -1
-                val newT = (t as? TouchTarget.ToneKey)?.idx ?: -1
-                if (isBackspaceDown && !isBackspaceTarget(t)) {
-                    onBackspaceRelease?.invoke()
-                    isBackspaceDown = false
-                }
-                if (newP != pressedKeyIdx || newC != pressedControlIdx || newT != pressedToneIdx) {
-                    pressedKeyIdx = newP
-                    pressedControlIdx = newC
-                    pressedToneIdx = newT
-                    invalidate()
+                if (contacts.isEmpty()) return false
+                for (index in 0 until event.pointerCount) {
+                    moveContact(event.getPointerId(index), event.getX(index), event.getY(index))
                 }
                 return true
             }
-            MotionEvent.ACTION_UP -> {
-                if (spaceCursorGesture.ownsTouch) {
-                    spaceCursorGesture.move(event.x, event.y)
-                    val tap = spaceCursorGesture.release()
-                    if (tap && findTarget(event.x, event.y) == downTarget) {
-                        onSpace?.invoke()
-                        performClick()
-                    }
-                    downTarget = null
-                    pressedControlIdx = -1
-                    invalidate()
-                    return true
-                }
-                val t = findTarget(event.x, event.y)
-                if (candidateDragging && candidateSwipeDirection != 0) {
-                    onCandidatePageSwipe?.invoke(candidateSwipeDirection)
-                } else if (!candidateDragging && t != null && t == downTarget) {
-                    handleTarget(t)
-                    if (t !is TouchTarget.CandidatePanel) performClick()
-                }
-                if (isBackspaceDown) {
-                    onBackspaceRelease?.invoke()
-                }
-                pressedKeyIdx = -1
-                pressedControlIdx = -1
-                pressedToneIdx = -1
-                downTarget = null
-                isBackspaceDown = false
-                candidateDragging = false
-                candidateSwipeDirection = 0
-                invalidate()
+            MotionEvent.ACTION_UP,
+            MotionEvent.ACTION_POINTER_UP -> {
+                val index = event.actionIndex
+                endContact(event.getPointerId(index), event.getX(index), event.getY(index))
                 return true
             }
             MotionEvent.ACTION_CANCEL -> {
-                cancelCursorGesture()
-                if (isBackspaceDown) {
-                    onBackspaceRelease?.invoke()
-                }
-                pressedKeyIdx = -1
-                pressedControlIdx = -1
-                pressedToneIdx = -1
-                downTarget = null
-                isBackspaceDown = false
-                candidateDragging = false
-                candidateSwipeDirection = 0
+                cancelAllContacts()
                 invalidate()
                 return true
             }
-            MotionEvent.ACTION_POINTER_DOWN -> {
-                if (spaceCursorGesture.ownsTouch) {
-                    // Rolling onto the next key: an unfinished space tap still types,
-                    // and the new finger becomes the touch that fires on ACTION_UP.
-                    if (spaceCursorGesture.release()) {
-                        onSpace?.invoke()
-                        performClick()
-                    }
-                    val index = event.actionIndex
-                    val t = findTarget(event.getX(index), event.getY(index))
-                        ?.takeUnless { isBackspaceTarget(it) || it is TouchTarget.Candidate || it is TouchTarget.CandidatePanel }
-                    downTarget = t
-                    pressedKeyIdx = (t as? TouchTarget.ZhuyinKey)?.idx ?: -1
-                    pressedControlIdx = (t as? TouchTarget.ControlKey)?.idx ?: -1
-                    pressedToneIdx = (t as? TouchTarget.ToneKey)?.idx ?: -1
-                    invalidate()
-                    return true
+        }
+        return super.onTouchEvent(event)
+    }
+
+    private fun beginContact(pointerId: Int, x: Float, y: Float): Boolean {
+        val landed = findTarget(x, y)
+        val contact = landed?.let { target ->
+            Contact(
+                pointerId = pointerId,
+                downX = x,
+                downY = y,
+                target = target,
+                trackingSpace = target is TouchTarget.ControlKey && target.action == ControlAction.SPACE,
+                hapticArmed = target !is TouchTarget.CandidatePanel,
+                backspaceEngaged = false,
+                candidateDragging = false,
+                candidateSwipeDirection = 0,
+                candidateDragStartX = x,
+                candidateDragStartY = y,
+                candidateDragStartOffset = candidateScrollOffset
+            ).also { created ->
+                contacts[pointerId] = created
+                // Feedback before dictionary, editor IPC, or backspace repeat work.
+                if (created.hapticArmed) {
+                    onKeyFeedback?.invoke()
+                    playKeyClick(target)
+                }
+                parent?.requestDisallowInterceptTouchEvent(true)
+                applyHighlight(target)
+            }
+        }
+        val previousSpace = contacts.values.firstOrNull { existing ->
+            existing.pointerId != pointerId && existing.trackingSpace && !existing.resolved &&
+                spaceCursorGesture.ownsTouch
+        }
+        if (previousSpace != null) {
+            val tap = spaceCursorGesture.release()
+            previousSpace.trackingSpace = false
+            previousSpace.resolved = true
+            previousSpace.target = null
+            if (tap) {
+                commitContact(previousSpace) {
+                    onSpace?.invoke()
+                    performClick()
                 }
             }
         }
-        return super.onTouchEvent(event)
+        contact?.let { created ->
+            if (created.trackingSpace) spaceCursorGesture.press(x, y)
+            if (isBackspaceTarget(created.target)) {
+                created.backspaceEngaged = true
+                commitContact(created) { onBackspace?.invoke() }
+            }
+        }
+        invalidate()
+        return contacts.isNotEmpty()
+    }
+
+    private fun moveContact(pointerId: Int, x: Float, y: Float) {
+        val contact = contacts[pointerId] ?: return
+        if (contact.resolved) return
+        if (contact.trackingSpace && spaceCursorGesture.ownsTouch) {
+            spaceCursorGesture.move(x, y)
+            return
+        }
+        if (isCandidateContact(contact) && !candidateExpanded) {
+            val dragX = x - contact.candidateDragStartX
+            val dragY = y - contact.candidateDragStartY
+            if (contact.candidateDragging ||
+                (abs(dragX) > candidateTouchSlop && abs(dragX) > abs(dragY))
+            ) {
+                contact.candidateDragging = true
+                contact.candidateSwipeDirection = if (dragX < 0f) 1 else -1
+                invalidate()
+                return
+            }
+        }
+        if (isCandidateContact(contact) && candidateExpanded && candidateBarRect.contains(x, y)) {
+            val dragDistance = y - contact.candidateDragStartY
+            if (contact.candidateDragging || abs(dragDistance) > candidateTouchSlop) {
+                contact.candidateDragging = true
+                candidateScrollOffset = CandidatePanelBehavior.clampScroll(
+                    contact.candidateDragStartOffset - dragDistance,
+                    candidateContentHeight,
+                    candidateBarRect.height()
+                )
+                layoutCandidateCells()
+                invalidate()
+                return
+            }
+        }
+        val preview = previewTarget(contact, x, y)
+        if (contact.backspaceEngaged && !isBackspaceTarget(preview)) {
+            onBackspaceRelease?.invoke()
+            contact.backspaceEngaged = false
+        }
+        applyHighlight(preview)
+    }
+
+    private fun endContact(pointerId: Int, x: Float, y: Float) {
+        val contact = contacts.remove(pointerId) ?: return
+        try {
+            if (contact.resolved) return
+            if (contact.trackingSpace && spaceCursorGesture.ownsTouch) {
+                spaceCursorGesture.move(x, y)
+                val tap = spaceCursorGesture.release()
+                if (tap && releaseDecision(contact, x, y) == KeyboardTouchPolicy.KeyRelease.ORIGINAL) {
+                    contact.target?.let { fire(contact, it) }
+                }
+                return
+            }
+            if (contact.candidateDragging && contact.candidateSwipeDirection != 0) {
+                commitContact(contact) {
+                    onCandidatePageSwipe?.invoke(contact.candidateSwipeDirection)
+                }
+                return
+            }
+            if (contact.candidateDragging) return
+            when (releaseDecision(contact, x, y)) {
+                KeyboardTouchPolicy.KeyRelease.ORIGINAL -> contact.target?.let { fire(contact, it) }
+                KeyboardTouchPolicy.KeyRelease.UNDER_FINGER -> {
+                    findTarget(x, y)
+                        ?.takeIf { slideCompatible(contact.target, it) }
+                        ?.let { fire(contact, it) }
+                }
+                KeyboardTouchPolicy.KeyRelease.CANCEL -> Unit
+            }
+        } finally {
+            if (contact.backspaceEngaged) {
+                onBackspaceRelease?.invoke()
+                contact.backspaceEngaged = false
+            }
+            contact.hapticArmed = false
+            if (committingContact === contact) committingContact = null
+            refreshHighlights()
+            invalidate()
+        }
+    }
+
+    private fun fire(contact: Contact, target: TouchTarget) {
+        commitContact(contact) {
+            handleTarget(target)
+            if (target !is TouchTarget.CandidatePanel) performClick()
+        }
+    }
+
+    private fun commitContact(contact: Contact, block: () -> Unit) {
+        committingContact = contact
+        try {
+            block()
+        } finally {
+            contact.hapticArmed = false
+            if (committingContact === contact) committingContact = null
+        }
+    }
+
+    /** True when finger-down already played the haptic for the key this commit is finishing. */
+    internal fun consumeCommittingHaptic(): Boolean {
+        val contact = committingContact ?: return false
+        if (!contact.hapticArmed) return false
+        contact.hapticArmed = false
+        return true
     }
 
     override fun performClick(): Boolean {
@@ -1096,20 +1210,114 @@ class ZhuyinKeyboardView @JvmOverloads constructor(
             }?.let { return TouchTarget.Candidate(it.candidateIndex) }
             return TouchTarget.CandidatePanel
         }
-        // 控制列 (優先於注音, 因為 y 範圍不會撞)
-        for ((i, k) in controlKeys.withIndex()) {
-            if (k.rect.contains(x, y)) return TouchTarget.ControlKey(i)
+        // A touch inside a drawn control stays there. Aim correction applies to the
+        // gaps and key grid, where the contact centroid sits below the fingertip.
+        for ((index, key) in controlKeys.withIndex()) {
+            if (key.rect.contains(x, y)) return TouchTarget.ControlKey(index, key.action)
         }
-        // 視覺上的按鍵間距仍屬於最近的按鍵觸控區，避免手指落在縫隙時漏字。
+        val biasedY = y - dp(KeyboardTouchPolicy.TOUCH_AIM_OFFSET_UP_DP)
+        val controlIndex = KeyboardHitTesting.nearestExpandedIndex(
+            x = x,
+            y = biasedY,
+            boxes = controlHitBoxes,
+            horizontalSlop = 0f,
+            verticalSlop = 0f
+        )
+        if (controlIndex >= 0) {
+            return TouchTarget.ControlKey(controlIndex, controlKeys[controlIndex].action)
+        }
+        val keyFloor = keyHitBoxes.minOfOrNull { it.top } ?: biasedY
         val keyIndex = KeyboardHitTesting.nearestExpandedIndex(
             x = x,
-            y = y,
+            y = biasedY.coerceAtLeast(keyFloor),
             boxes = keyHitBoxes,
-            horizontalSlop = maxOf(dp(MIN_KEY_HIT_SLOP_DP), dp(metrics.horizontalGap) * 0.75f),
-            verticalSlop = maxOf(dp(MIN_KEY_HIT_SLOP_DP), dp(metrics.verticalGap) * 0.75f)
+            horizontalSlop = 0f,
+            verticalSlop = 0f
         )
-        if (keyIndex >= 0) return TouchTarget.ZhuyinKey(keyIndex)
+        if (keyIndex >= 0) {
+            val key = zhuyinKeys[keyIndex]
+            return TouchTarget.ZhuyinKey(keyIndex, key.label)
+        }
         return null
+    }
+
+    private fun releaseDecision(contact: Contact, x: Float, y: Float): KeyboardTouchPolicy.KeyRelease {
+        val under = findTarget(x, y)
+        return KeyboardTouchPolicy.keyRelease(
+            downX = contact.downX,
+            downY = contact.downY,
+            upX = x,
+            upY = y,
+            hadTarget = contact.target != null,
+            stillOnOriginal = sameTarget(contact.target, under),
+            fingerOnTypingKey = !contact.trackingSpace && slideCompatible(contact.target, under),
+            holdRadiusPx = dp(KeyboardTouchPolicy.TAP_HOLD_RADIUS_DP)
+        )
+    }
+
+    private fun previewTarget(contact: Contact, x: Float, y: Float): TouchTarget? =
+        when (releaseDecision(contact, x, y)) {
+            KeyboardTouchPolicy.KeyRelease.ORIGINAL -> contact.target
+            KeyboardTouchPolicy.KeyRelease.UNDER_FINGER -> findTarget(x, y)
+            KeyboardTouchPolicy.KeyRelease.CANCEL -> null
+        }
+
+    private fun sameTarget(down: TouchTarget?, up: TouchTarget?): Boolean = when {
+        down is TouchTarget.ZhuyinKey && up is TouchTarget.ZhuyinKey -> down.label == up.label
+        down is TouchTarget.ControlKey && up is TouchTarget.ControlKey -> down.action == up.action
+        down is TouchTarget.Tool && up is TouchTarget.Tool -> down.label == up.label
+        down is TouchTarget.Candidate && up is TouchTarget.Candidate -> down.idx == up.idx
+        down is TouchTarget.MorePage && up is TouchTarget.MorePage -> true
+        down is TouchTarget.CandidatePanel && up is TouchTarget.CandidatePanel -> true
+        down is TouchTarget.ToneKey && up is TouchTarget.ToneKey -> down.idx == up.idx
+        else -> false
+    }
+
+    private fun slideCompatible(down: TouchTarget?, up: TouchTarget?): Boolean {
+        if (up == null || isBackspaceTarget(up) && !isBackspaceTarget(down)) return false
+        return when (down) {
+            is TouchTarget.ZhuyinKey, is TouchTarget.ControlKey ->
+                up is TouchTarget.ZhuyinKey || up is TouchTarget.ControlKey
+            is TouchTarget.Tool -> up is TouchTarget.Tool
+            is TouchTarget.Candidate -> up is TouchTarget.Candidate
+            is TouchTarget.MorePage -> up is TouchTarget.MorePage
+            else -> false
+        }
+    }
+
+    private fun isCandidateContact(contact: Contact): Boolean =
+        contact.target is TouchTarget.Candidate || contact.target is TouchTarget.CandidatePanel
+
+    private fun applyHighlight(target: TouchTarget?) {
+        val newKey = (target as? TouchTarget.ZhuyinKey)?.idx ?: -1
+        val newControl = (target as? TouchTarget.ControlKey)?.idx ?: -1
+        val newTone = (target as? TouchTarget.ToneKey)?.idx ?: -1
+        if (newKey != pressedKeyIdx || newControl != pressedControlIdx || newTone != pressedToneIdx) {
+            pressedKeyIdx = newKey
+            pressedControlIdx = newControl
+            pressedToneIdx = newTone
+            invalidate()
+        }
+    }
+
+    private fun refreshHighlights() {
+        applyHighlight(contacts.values.lastOrNull { !it.resolved }?.target)
+    }
+
+    private fun playKeyClick(target: TouchTarget) {
+        val effect = when {
+            isBackspaceTarget(target) -> AudioManager.FX_KEYPRESS_DELETE
+            target is TouchTarget.ControlKey && target.action == ControlAction.SPACE ->
+                AudioManager.FX_KEYPRESS_SPACEBAR
+            target is TouchTarget.ControlKey && target.action == ControlAction.RETURN ->
+                AudioManager.FX_KEYPRESS_RETURN
+            else -> AudioManager.FX_KEYPRESS_STANDARD
+        }
+        try {
+            val audio = context.getSystemService(Context.AUDIO_SERVICE) as? AudioManager ?: return
+            audio.playSoundEffect(effect)
+        } catch (_: RuntimeException) {
+        }
     }
 
     private fun handleTarget(t: TouchTarget) {
@@ -1129,7 +1337,7 @@ class ZhuyinKeyboardView @JvmOverloads constructor(
             is TouchTarget.MorePage -> onCandidateExpansionToggle?.invoke()
             is TouchTarget.CandidatePanel -> {}
             is TouchTarget.ControlKey -> {
-                when (controlKeys[t.idx].action) {
+                when (t.action) {
                     ControlAction.SPACE -> onSpace?.invoke()
                     ControlAction.RETURN -> onReturn?.invoke()
                     ControlAction.ENGLISH -> onEnglishMode?.invoke()
@@ -1150,25 +1358,26 @@ class ZhuyinKeyboardView @JvmOverloads constructor(
                 }
             }
             is TouchTarget.ZhuyinKey -> {
-                val key = zhuyinKeys[t.idx]
+                val key = zhuyinKeys.getOrNull(t.idx)?.takeIf { it.label == t.label }
+                    ?: zhuyinKeys.firstOrNull { it.label == t.label }
+                val label = key?.label ?: t.label
+                if (label.isEmpty() || label == "⌫") return
                 if (mode == Mode.ZHUYIN) {
                     when {
-                        key.isTone -> onToneSelected?.invoke(key.label)
-                        key.isToggle -> onKeyPress?.invoke(key.label)
-                        key.label == "⌫" -> { /* handled on DOWN/UP for repeat delete */ }
-                        key.label.isNotEmpty() -> onKeyPress?.invoke(key.label)
+                        key?.isTone == true || label in ZhuyinDynamicLayout.TONES ->
+                            onToneSelected?.invoke(label)
+                        else -> onKeyPress?.invoke(label)
                     }
                 } else {
-                    when (key.label) {
+                    when (label) {
                         "⇧" -> {
                             englishShifted = !englishShifted
                             refresh()
                         }
                         "#+=" -> onSymbolMode?.invoke()
                         "123" -> onNumberMode?.invoke()
-                        "⌫" -> { /* handled on DOWN/UP for repeat delete */ }
-                        else -> if (key.label.isNotEmpty()) {
-                            onSymbolChar?.invoke(key.label)
+                        else -> {
+                            onSymbolChar?.invoke(label)
                             if (mode == Mode.ENGLISH && englishShifted) {
                                 englishShifted = false
                                 refresh()
@@ -1184,8 +1393,8 @@ class ZhuyinKeyboardView @JvmOverloads constructor(
     }
 
     private fun isBackspaceTarget(target: TouchTarget?): Boolean = when (target) {
-        is TouchTarget.ControlKey -> controlKeys[target.idx].action == ControlAction.BACKSPACE
-        is TouchTarget.ZhuyinKey -> zhuyinKeys[target.idx].label == "⌫"
+        is TouchTarget.ControlKey -> target.action == ControlAction.BACKSPACE
+        is TouchTarget.ZhuyinKey -> target.label == "⌫"
         else -> false
     }
 
@@ -1195,6 +1404,5 @@ class ZhuyinKeyboardView @JvmOverloads constructor(
     companion object {
         private val EDIT_ACTIONS = setOf("全選", "複製", "剪下", "貼上", "◀", "▶")
         private val EDIT_TOOL_LABELS = listOf("完成") + EDIT_ACTIONS.toList()
-        private const val MIN_KEY_HIT_SLOP_DP = 6f
     }
 }

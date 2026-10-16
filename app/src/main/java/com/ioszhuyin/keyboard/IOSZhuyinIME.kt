@@ -255,7 +255,7 @@ class IOSZhuyinIME : InputMethodService() {
             startActivity(Intent(this, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
         }
         view.onCursorGestureStart = {
-            (currentInputConnection != null).also { if (it) vibrateLight() }
+            (currentInputConnection != null).also { if (it) vibrateLight(force = true) }
         }
         view.onCursorMove = { steps ->
             lastCommittedWord = ""
@@ -279,6 +279,7 @@ class IOSZhuyinIME : InputMethodService() {
         view.onSymbolChar = { ch -> handleSymbolChar(ch) }
         view.onToggleToZhuyin = { handleToggleToZhuyin() }
         view.onToneSelected = { tone -> onToneSelected(tone) }
+        view.onKeyFeedback = { vibrateLight(force = true) }
 
         keyboardView = view
         view.setReturnKeyLabel(editorReturnKeyLabel)
@@ -1159,7 +1160,8 @@ class IOSZhuyinIME : InputMethodService() {
         syncKeyboardView()
     }
 
-    private fun vibrateLight() {
+    private fun vibrateLight(force: Boolean = false) {
+        if (!force && keyboardView?.consumeCommittingHaptic() == true) return
         try {
             val currentVibrator = vibrator ?: return
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {

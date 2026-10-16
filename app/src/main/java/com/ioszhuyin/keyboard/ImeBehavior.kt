@@ -136,7 +136,125 @@ internal data class KeyboardHitBox(
     val enabled: Boolean = true
 )
 
+/**
+ * Tuning knobs for how a finger becomes a key. Adjust these on device if taps
+ * still feel slightly high, low, or easy to cancel.
+ */
+internal object KeyboardTouchPolicy {
+    /**
+     * The reported touch is the contact centroid, which sits below the fingertip
+     * a person is aiming with. Hit tests shift up by this many dp.
+     */
+    const val TOUCH_AIM_OFFSET_UP_DP = 4f
+
+    /**
+     * A finger-up still produces the key from finger-down when the contact stays
+     * inside this radius. This is the natural roll of a tap, not a slide to a
+     * different key.
+     */
+    const val TAP_HOLD_RADIUS_DP = 20f
+
+    enum class KeyRelease {
+        ORIGINAL,
+        UNDER_FINGER,
+        CANCEL
+    }
+
+    fun keyRelease(
+        downX: Float,
+        downY: Float,
+        upX: Float,
+        upY: Float,
+        hadTarget: Boolean,
+        stillOnOriginal: Boolean,
+        fingerOnTypingKey: Boolean,
+        holdRadiusPx: Float
+    ): KeyRelease {
+        if (!hadTarget) return KeyRelease.CANCEL
+        val dx = upX - downX
+        val dy = upY - downY
+        if (dx * dx + dy * dy <= holdRadiusPx * holdRadiusPx) return KeyRelease.ORIGINAL
+        if (stillOnOriginal) return KeyRelease.ORIGINAL
+        if (fingerOnTypingKey) return KeyRelease.UNDER_FINGER
+        return KeyRelease.CANCEL
+    }
+}
+
 internal object KeyboardHitTesting {
+    /**
+     * Grows enabled keys so the gaps, staggered-row side margins, and the padding
+     * around a row belong to a key. Disabled boxes stay uncovered. Visual rects
+     * are unchanged; only the returned hit boxes grow, and they never shrink.
+     */
+    fun expandEnabledHits(
+        boxes: List<KeyboardHitBox>,
+        rows: List<Int>,
+        leftBound: Float,
+        rightBound: Float,
+        topBound: Float,
+        bottomBound: Float
+    ): List<KeyboardHitBox> {
+        require(boxes.size == rows.size)
+        if (boxes.isEmpty()) return emptyList()
+        val expanded = boxes.toMutableList()
+        val rowIds = rows.distinct().sorted()
+        val enabledByRow = rowIds.associateWith { row ->
+            boxes.indices.filter { rows[it] == row && boxes[it].enabled }.sortedBy { boxes[it].left }
+        }
+        rowIds.forEachIndexed { rowPosition, row ->
+            val members = enabledByRow.getValue(row)
+            if (members.isEmpty()) return@forEachIndexed
+            val spanTop = members.minOf { boxes[it].top }
+            val spanBottom = members.maxOf { boxes[it].bottom }
+            val proposedTop = if (rowPosition == 0) {
+                topBound
+            } else {
+                val previous = rowIds[rowPosition - 1]
+                val previousBottom = enabledByRow.getValue(previous)
+                    .maxOfOrNull { boxes[it].bottom }
+                if (previousBottom == null) topBound else (previousBottom + spanTop) / 2f
+            }
+            val proposedBottom = if (rowPosition == rowIds.lastIndex) {
+                bottomBound
+            } else {
+                val next = rowIds[rowPosition + 1]
+                val nextTop = enabledByRow.getValue(next).minOfOrNull { boxes[it].top }
+                if (nextTop == null) bottomBound else (spanBottom + nextTop) / 2f
+            }
+            val barriers = boxes.indices
+                .filter { rows[it] == row && !boxes[it].enabled }
+                .map { boxes[it] }
+                .filter { it.bottom > spanTop && it.top < spanBottom }
+            members.forEachIndexed { index, boxIndex ->
+                val box = boxes[boxIndex]
+                val proposedLeft = if (index == 0) {
+                    leftBound
+                } else {
+                    (boxes[members[index - 1]].right + box.left) / 2f
+                }
+                val proposedRight = if (index == members.lastIndex) {
+                    rightBound
+                } else {
+                    (box.right + boxes[members[index + 1]].left) / 2f
+                }
+                var left = minOf(box.left, proposedLeft)
+                var right = maxOf(box.right, proposedRight)
+                barriers.filter { it.right <= box.left }.maxOfOrNull { it.right }?.let { barrier ->
+                    left = maxOf(left, barrier)
+                }
+                barriers.filter { it.left >= box.right }.minOfOrNull { it.left }?.let { barrier ->
+                    right = minOf(right, barrier)
+                }
+                val top = minOf(box.top, proposedTop)
+                val bottom = maxOf(box.bottom, proposedBottom)
+                if (left < right && top < bottom) {
+                    expanded[boxIndex] = box.copy(left = left, top = top, right = right, bottom = bottom)
+                }
+            }
+        }
+        return expanded
+    }
+
     fun nearestExpandedIndex(
         x: Float,
         y: Float,
