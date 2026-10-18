@@ -84,10 +84,10 @@ class KeyboardToolsDeviceTest {
         }
     }
 
-    @Test fun firstBackspaceDismissesPredictionAndDeletesImmediately() {
+    @Test fun firstBackspaceDismissesPredictionAndConsumesHoldUntilRelease() {
         instrumentation.runOnMainSync {
-            // Exercise the actual handlers with a deletion spy; predictions must
-            // not consume the first deletion or suppress the held repeat.
+            // Exercise the actual handlers with a deletion spy: the first press only
+            // dismisses predictions, and holding it must not start deleting.
             val ime = IOSZhuyinIME()
             val view = ZhuyinKeyboardView(instrumentation.targetContext)
             view.layout(0, 0, 1080, 2200)
@@ -112,13 +112,13 @@ class KeyboardToolsDeviceTest {
                 assertFalse(field("showingNextWordSuggestions").getBoolean(ime))
                 assertTrue((field("allCandidates").get(ime) as List<*>).isEmpty())
                 assertEquals(5, keys(view, "toolKeys").size)
-                assertEquals(1, deletions)
-                scheduled.removeAt(0).run()
-                assertEquals(2, deletions)
-                call("handleBackspaceUp")
+                assertEquals(0, deletions)
                 assertTrue(scheduled.isEmpty())
+                call("handleBackspaceDown") // Physical-key repeat from the same contact.
+                assertEquals(0, deletions)
+                call("handleBackspaceUp")
                 call("handleBackspaceDown")
-                assertEquals(3, deletions)
+                assertEquals(1, deletions)
             } finally { call("handleBackspaceUp") }
         }
     }

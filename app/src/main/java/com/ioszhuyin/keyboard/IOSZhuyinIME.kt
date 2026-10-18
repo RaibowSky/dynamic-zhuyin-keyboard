@@ -35,6 +35,7 @@ open class IOSZhuyinIME : InputMethodService() {
     private var showingNextWordSuggestions: Boolean = false
     private var lastCommittedWord = ""
     private var nextWordCandidates: Set<String> = emptySet()
+    private var backspaceDismissedSuggestions = false
     private var modeBeforeEmoji = ZhuyinKeyboardView.Mode.ZHUYIN
     private var showFinalPage: Boolean = false
 
@@ -770,11 +771,16 @@ open class IOSZhuyinIME : InputMethodService() {
     }
 
     private fun handleBackspaceDown() {
+        if (backspaceDismissedSuggestions) return
         if (composingText.isEmpty() && showingNextWordSuggestions) {
-            // Predictions have not inserted text. Dismiss them without consuming
-            // the user's delete: the first press must still delete one character.
+            // The first press only dismisses predictions; holding it must not
+            // start deleting until the key is released and pressed again.
+            stopBackspaceRepeat()
+            backspaceDismissedSuggestions = true
             lastCommittedWord = ""
             showNextWordSuggestions()
+            vibrateLight()
+            return
         }
         backspaceRepeater.press()
     }
@@ -785,6 +791,7 @@ open class IOSZhuyinIME : InputMethodService() {
 
     private fun stopBackspaceRepeat() {
         backspaceRepeater.release()
+        backspaceDismissedSuggestions = false
     }
 
     private fun handleBackspace() {
