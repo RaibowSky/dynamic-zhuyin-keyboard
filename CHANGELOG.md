@@ -1,6 +1,6 @@
 # Changelog
 
-## 1.3.0 (Unreleased)
+## 1.3.0 (2026-10-18)
 
 - Register taps more reliably: a short finger roll keeps the pressed key, overlapping fingers are tracked separately, and gaps between keys, staggered-row margins and the strip below the candidate row belong to the nearest key or candidate. Haptics fire when the finger lands.
 - Add an optional key sound with its own switch and volume, independent of the system touch-sound setting (off by default; silent and vibrate modes mute it).
