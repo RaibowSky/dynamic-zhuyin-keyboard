@@ -13,7 +13,7 @@
 
 ### 直接下載 APK
 
-也可[下載 Android APK（v1.3.0）](https://github.com/RaibowSky/dynamic-zhuyin-keyboard/releases/download/v1.3.0/dynamic-zhuyin-1.3.0.apk)，下載後開啟 `.apk` 安裝。
+也可[下載 Android APK（v1.3.1）](https://github.com/RaibowSky/dynamic-zhuyin-keyboard/releases/download/v1.3.1/dynamic-zhuyin-1.3.1.apk)，下載後開啟 `.apk` 安裝。
 
 [最新版本與更新說明](https://github.com/RaibowSky/dynamic-zhuyin-keyboard/releases/latest) · [安裝與舊版升級說明](#安裝)
 

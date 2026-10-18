@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 1.3.1 (2026-10-18)
 
 - Holding Backspace plays the key sound for every repeated deletion, not only the first press (when the key sound is on).
 - Add an in-app 「開放原始碼授權」 page showing the app license, the Apple non-affiliation notice and every bundled third-party notice, including the Apache 2.0 text and the libraries compiled into the app.

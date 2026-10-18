@@ -13,7 +13,7 @@ After installation, open Dynamic Zhuyin Keyboard and use its enable-keyboard and
 
 ### Direct APK download
 
-You can also [download the Android APK (v1.3.0)](https://github.com/RaibowSky/dynamic-zhuyin-keyboard/releases/download/v1.3.0/dynamic-zhuyin-1.3.0.apk) and open the downloaded `.apk` to install it.
+You can also [download the Android APK (v1.3.1)](https://github.com/RaibowSky/dynamic-zhuyin-keyboard/releases/download/v1.3.1/dynamic-zhuyin-1.3.1.apk) and open the downloaded `.apk` to install it.
 
 [Latest release and release notes](https://github.com/RaibowSky/dynamic-zhuyin-keyboard/releases/latest) · [Installation and upgrades](#installation)
 
