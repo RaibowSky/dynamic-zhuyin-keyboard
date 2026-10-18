@@ -5,6 +5,7 @@ import android.content.Intent
 import android.content.ClipboardManager
 import android.graphics.Typeface
 import android.inputmethodservice.InputMethodService
+import android.media.AudioManager
 import android.os.Build
 import android.os.Handler
 import android.os.Looper
@@ -170,7 +171,8 @@ open class IOSZhuyinIME : InputMethodService() {
         },
         cancel = { task ->
             mainHandler.removeCallbacks(task)
-        }
+        },
+        onRepeat = { KeyboardSound.play(this, AudioManager.FX_KEYPRESS_DELETE) }
     )
 
     override fun onCreate() {

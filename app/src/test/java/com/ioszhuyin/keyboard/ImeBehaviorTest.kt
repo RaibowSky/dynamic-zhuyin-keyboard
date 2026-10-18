@@ -79,30 +79,39 @@ class ImeBehaviorTest {
     @Test
     fun backspaceRepeaterStopsAcrossReleaseAndRestart() {
         var deletes = 0
+        var repeats = 0
         val scheduled = mutableListOf<Pair<Runnable, Long>>()
         val cancelled = mutableListOf<Runnable>()
         val repeater = BackspaceRepeater(
             deleteOnce = { deletes++ },
             schedule = { task, delay -> scheduled += task to delay },
-            cancel = { cancelled += it }
+            cancel = { cancelled += it },
+            onRepeat = { repeats++ }
         )
 
         repeater.press()
         assertEquals(1, deletes)
+        assertEquals(0, repeats)
         assertEquals(400L, scheduled.single().second)
 
         val firstTask = scheduled.single().first
         firstTask.run()
         assertEquals(2, deletes)
+        assertEquals(1, repeats)
         assertEquals(80L, scheduled.last().second)
+        firstTask.run()
+        assertEquals(3, deletes)
+        assertEquals(2, repeats)
 
         repeater.release()
         assertTrue(firstTask in cancelled)
         firstTask.run()
-        assertEquals(2, deletes)
+        assertEquals(3, deletes)
+        assertEquals(2, repeats)
 
         repeater.press()
-        assertEquals(3, deletes)
+        assertEquals(4, deletes)
+        assertEquals(2, repeats)
         repeater.release()
     }
 

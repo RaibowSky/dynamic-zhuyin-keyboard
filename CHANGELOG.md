@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- Holding Backspace plays the key sound for every repeated deletion, not only the first press (when the key sound is on).
+
 ## 1.3.0 (2026-10-18)
 
 - Register taps more reliably: a short finger roll keeps the pressed key, overlapping fingers are tracked separately, and gaps between keys, staggered-row margins and the strip below the candidate row belong to the nearest key or candidate. Haptics fire when the finger lands.
