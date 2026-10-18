@@ -16,7 +16,7 @@ import android.view.inputmethod.EditorInfo
 import android.widget.LinearLayout
 import java.io.File
 
-class IOSZhuyinIME : InputMethodService() {
+open class IOSZhuyinIME : InputMethodService() {
 
     private var keyboardView: ZhuyinKeyboardView? = null
     private var bopomofoTypeface: Typeface? = null
@@ -24,6 +24,9 @@ class IOSZhuyinIME : InputMethodService() {
     private lateinit var userDictionaryStore: UserDictionaryStore
 
     private val composingText = StringBuilder()
+    // UTF-16 offsets within the unconverted reading; -1 follows its end.
+    private var composingSelectionStart = -1
+    private var composingSelectionEnd = -1
     private var allCandidates: List<String> = emptyList()
     private var candidateChoices: List<CandidateChoice> = emptyList()
     private var selectedCandidateIndex: Int = -1
@@ -179,6 +182,7 @@ class IOSZhuyinIME : InputMethodService() {
         userDictionaryStore = UserDictionaryStore(this)
         migrateLegacyLearning()
         ZhuyinDictionary.initialize(this)
+        ZhuyinDictionary.preloadForTyping(this, PREFIX_CANDIDATE_LIMIT)
         bopomofoTypeface = try {
             val outFile = File(cacheDir, "bopomofo.ttf")
             if (!outFile.exists() || outFile.length() < 1000) {
@@ -255,17 +259,11 @@ class IOSZhuyinIME : InputMethodService() {
             startActivity(Intent(this, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
         }
         view.onCursorGestureStart = {
-            (currentInputConnection != null).also { if (it) vibrateLight() }
+            (currentInputConnection != null).also { if (it) vibrateLight(force = true) }
         }
         view.onCursorMove = { steps ->
             lastCommittedWord = ""
-            if (drainComposing(recordLearning = false)) {
-                currentInputConnection?.let { connection ->
-                    safeEditorOperation("spacebar cursor movement") {
-                        CursorNavigation.move(connection, steps)
-                    }
-                }
-            }
+            moveEditingCursor(steps)
         }
         view.onEditAction = { label -> handleEditAction(label) }
         view.onReturn = { handleReturn() }
@@ -279,6 +277,7 @@ class IOSZhuyinIME : InputMethodService() {
         view.onSymbolChar = { ch -> handleSymbolChar(ch) }
         view.onToggleToZhuyin = { handleToggleToZhuyin() }
         view.onToneSelected = { tone -> onToneSelected(tone) }
+        view.onKeyFeedback = { vibrateLight(force = true) }
 
         keyboardView = view
         view.setReturnKeyLabel(editorReturnKeyLabel)
@@ -304,7 +303,10 @@ class IOSZhuyinIME : InputMethodService() {
 
         if (key.isEmpty()) return
         if (!synchronizePendingComposition()) return
-        composingText.append(key)
+        val (start, end) = composingSelection()
+        composingText.replace(start, end, key)
+        composingSelectionStart = start + key.length
+        composingSelectionEnd = composingSelectionStart
         showFinalPage = true
         refreshCandidates(resetSelection = true)
         vibrateLight()
@@ -313,20 +315,24 @@ class IOSZhuyinIME : InputMethodService() {
     private fun onToneSelected(tone: String) {
         if (composingText.isEmpty()) return
         if (!synchronizePendingComposition()) return
-        applyToneToLastSegment(tone)
+        applyToneAtCaret(tone)
         showFinalPage = false
         refreshCandidates(resetSelection = true)
         vibrateLight()
     }
 
-    private fun applyToneToLastSegment(tone: String) {
+    private fun applyToneAtCaret(tone: String) {
         val segments = splitSegments(composingText.toString())
-        val last = segments.lastOrNull() ?: return
+        val cursor = composingSelection().first
+        val last = segments.firstOrNull { cursor > it.start && cursor <= it.end }
+            ?: segments.firstOrNull() ?: return
 
         if (last.hasTone && last.end > last.start) {
             composingText.deleteCharAt(last.end - 1)
         }
         composingText.insert(if (last.hasTone) last.end - 1 else last.end, tone)
+        composingSelectionStart = last.end + if (last.hasTone) 0 else tone.length
+        composingSelectionEnd = composingSelectionStart
     }
 
     private fun refreshCandidates(
@@ -387,10 +393,11 @@ class IOSZhuyinIME : InputMethodService() {
         }
 
         val desiredText = composingText.toString()
+        val desiredSelection = composingSelection()
         val reattachExistingComposition = if (
             desiredText.isNotEmpty() && editorCompositionPending
         ) {
-            compositionImmediatelyBeforeCursor(ic, desiredText) ?: run {
+            compositionAtSelection(ic, desiredText) ?: run {
                 Log.w(TAG, "Cannot safely locate pending editor composition")
                 return false
             }
@@ -399,7 +406,7 @@ class IOSZhuyinIME : InputMethodService() {
         }
         val expectedCursor = if (desiredText.isNotEmpty()) {
             if (reattachExistingComposition) {
-                editorSelectionEnd
+                maxOf(editorSelectionStart, editorSelectionEnd) - desiredSelection.second + desiredText.length
             } else {
                 EditorSelectionBehavior.composingCursorAfterSet(
                     selectionStart = editorSelectionStart,
@@ -409,6 +416,8 @@ class IOSZhuyinIME : InputMethodService() {
                     composingLength = desiredText.length
                 )
             }
+        } else if (clearEmptyComposition && editorComposingStart >= 0) {
+            editorComposingStart
         } else {
             null
         }
@@ -424,6 +433,10 @@ class IOSZhuyinIME : InputMethodService() {
             )
         val expectedToken = if (desiredText.isNotEmpty()) {
             when {
+                reattachExistingComposition -> expectedCompositionUpdates.expect(
+                    editorSelectionStart, desiredText.length,
+                    requireNotNull(expectedCursor), editorSelectionEnd
+                )
                 geometryUnchanged -> expectedCompositionUpdates.advanceWithoutExpectation(
                     cursor = requireNotNull(expectedCursor),
                     length = desiredText.length
@@ -434,6 +447,8 @@ class IOSZhuyinIME : InputMethodService() {
                 )
                 else -> expectedCompositionUpdates.advance()
             }
+        } else if (expectedCursor != null) {
+            expectedCompositionUpdates.expect(expectedCursor, 0)
         } else {
             expectedCompositionUpdates.advance()
         }
@@ -444,8 +459,8 @@ class IOSZhuyinIME : InputMethodService() {
                 val finished = ic.finishComposingText()
                 cleared && finished
             } else if (reattachExistingComposition) {
-                val cursor = editorSelectionEnd
-                ic.setComposingRegion(cursor - desiredText.length, cursor)
+                val start = maxOf(editorSelectionStart, editorSelectionEnd) - desiredSelection.second
+                ic.setComposingRegion(start, start + desiredText.length)
             } else {
                 ic.setComposingText(desiredText, 1)
             }
@@ -457,7 +472,15 @@ class IOSZhuyinIME : InputMethodService() {
         }
 
         if (accepted) {
-            if (geometryUnchanged) {
+            if (desiredText.isEmpty()) {
+                editorCompositionPending = false
+                editorComposingStart = -1
+                editorComposingEnd = -1
+                expectedCursor?.let {
+                    editorSelectionStart = it
+                    editorSelectionEnd = it
+                }
+            } else if (geometryUnchanged) {
                 editorCompositionPending = false
             } else if (
                 expectedCursor != null &&
@@ -470,11 +493,6 @@ class IOSZhuyinIME : InputMethodService() {
                 editorSelectionEnd = expectedCursor
             } else if (desiredText.isNotEmpty() && expectedCursor == null) {
                 editorCompositionPending = true
-                editorComposingStart = -1
-                editorComposingEnd = -1
-            } else if (desiredText.isEmpty()) {
-                editorCompositionPending = false
-                clearExpectedCompositionUpdates()
                 editorComposingStart = -1
                 editorComposingEnd = -1
             }
@@ -490,27 +508,39 @@ class IOSZhuyinIME : InputMethodService() {
                 }
             )
         }
+        if (accepted && desiredText.isNotEmpty() && expectedCursor != null &&
+            desiredSelection != (desiredText.length to desiredText.length)
+        ) {
+            val restored = setCompositionSelection(desiredSelection.first, desiredSelection.second)
+            if (!restored) {
+                // The text write succeeded but this editor rejected cursor restoration.
+                composingSelectionStart = editorSelectionStart - editorComposingStart
+                composingSelectionEnd = editorSelectionEnd - editorComposingStart
+            }
+            return restored
+        }
         return accepted
     }
 
-    private fun compositionImmediatelyBeforeCursor(
+    private fun compositionAtSelection(
         ic: android.view.inputmethod.InputConnection,
         composition: String
     ): Boolean? {
         if (
             composition.isEmpty() ||
             editorSelectionStart < 0 ||
-            editorSelectionStart != editorSelectionEnd ||
-            editorSelectionEnd < composition.length
+            editorSelectionEnd < 0
         ) {
             return null
         }
         return try {
-            val beforeCursor = ic.getTextBeforeCursor(composition.length, 0)
-                ?: return null
-            beforeCursor.toString() == composition
+            val (start, end) = composingSelection()
+            val before = ic.getTextBeforeCursor(start, 0) ?: return null
+            val selected = if (start == end) "" else ic.getSelectedText(0) ?: return null
+            val after = ic.getTextAfterCursor(composition.length - end, 0) ?: return null
+            before.toString() + selected + after == composition
         } catch (error: RuntimeException) {
-            Log.w(TAG, "Unable to inspect text before pending composition", error)
+            Log.w(TAG, "Unable to inspect pending composition around selection", error)
             null
         }
     }
@@ -593,16 +623,9 @@ class IOSZhuyinIME : InputMethodService() {
             candidate = choice.text
         )
         val tracksCurrentComposition = editorComposingStart >= 0 &&
-            editorComposingEnd - editorComposingStart == raw.length &&
-            editorSelectionStart == editorComposingEnd &&
-            editorSelectionEnd == editorComposingEnd
+            editorComposingEnd - editorComposingStart == raw.length
         val candidateCursor = if (tracksCurrentComposition) {
-            EditorSelectionBehavior.cursorAfterReplacingComposition(
-                selectionStart = editorSelectionStart,
-                selectionEnd = editorSelectionEnd,
-                composingLength = raw.length,
-                replacementLength = edit.committedText.length
-            )
+            editorComposingStart + edit.committedText.length
         } else {
             null
         }
@@ -656,6 +679,8 @@ class IOSZhuyinIME : InputMethodService() {
             CompositionEditing.SuffixState.COMPOSING -> {
                 composingText.clear()
                 composingText.append(edit.remainingText)
+                composingSelectionStart = -1
+                composingSelectionEnd = -1
                 if (edit.remainingText.isEmpty()) {
                     editorCompositionPending = false
                     clearExpectedCompositionUpdates()
@@ -713,6 +738,8 @@ class IOSZhuyinIME : InputMethodService() {
                 Log.w(TAG, "Editor rejected both composing and plain-text suffix preservation")
                 composingText.clear()
                 composingText.append(edit.remainingText)
+                composingSelectionStart = -1
+                composingSelectionEnd = -1
                 editorCompositionPending = true
                 candidateCursor?.let { cursor ->
                     editorSelectionStart = cursor
@@ -738,13 +765,16 @@ class IOSZhuyinIME : InputMethodService() {
         value in STANDALONE_FINALS || ZhuyinDictionary.getCandidates(value) != null
 
     private fun recomputePageFromComposing() {
-        val last = splitSegments(composingText.toString()).lastOrNull()
-        showFinalPage = composingText.isNotEmpty() && last?.hasTone != true
+        val prefix = composingText.substring(0, composingSelection().first)
+        val last = splitSegments(prefix).lastOrNull()
+        showFinalPage = prefix.isNotEmpty() && last?.hasTone != true
     }
 
     private fun handleBackspaceDown() {
         if (backspaceDismissedSuggestions) return
         if (composingText.isEmpty() && showingNextWordSuggestions) {
+            // The first press only dismisses predictions; holding it must not
+            // start deleting until the key is released and pressed again.
             stopBackspaceRepeat()
             backspaceDismissedSuggestions = true
             lastCommittedWord = ""
@@ -767,7 +797,12 @@ class IOSZhuyinIME : InputMethodService() {
     private fun handleBackspace() {
         if (!synchronizePendingComposition()) return
         if (composingText.isNotEmpty()) {
-            composingText.deleteCharAt(composingText.length - 1)
+            val (start, end) = composingSelection()
+            if (start == 0 && end == 0) return
+            val deleteStart = if (start == end) start - 1 else start
+            composingText.delete(deleteStart, end)
+            composingSelectionStart = deleteStart
+            composingSelectionEnd = deleteStart
             recomputePageFromComposing()
             refreshCandidates(
                 resetSelection = true,
@@ -818,7 +853,7 @@ class IOSZhuyinIME : InputMethodService() {
         if (composingText.isNotEmpty()) {
             if (!synchronizePendingComposition()) return
             if (showFinalPage) {
-                applyToneToLastSegment(FIRST_TONE)
+                applyToneAtCaret(FIRST_TONE)
                 showFinalPage = false
                 refreshCandidates(resetSelection = true)
                 vibrateLight()
@@ -988,9 +1023,79 @@ class IOSZhuyinIME : InputMethodService() {
             currentInputConnection?.getTextBeforeCursor(lastCommittedWord.length, 0)?.toString() == lastCommittedWord
     }.getOrDefault(false)
 
+    private fun composingSelection(): Pair<Int, Int> {
+        val start = if (composingSelectionStart < 0) composingText.length
+            else composingSelectionStart.coerceIn(0, composingText.length)
+        val end = if (composingSelectionEnd < 0) composingText.length
+            else composingSelectionEnd.coerceIn(0, composingText.length)
+        return minOf(start, end) to maxOf(start, end)
+    }
+
+    private fun setCompositionSelection(start: Int, end: Int): Boolean {
+        val connection = currentInputConnection ?: return false
+        if (editorComposingStart < 0 ||
+            editorComposingEnd - editorComposingStart != composingText.length
+        ) return false
+        val absoluteStart = editorComposingStart + start
+        val absoluteEnd = editorComposingStart + end
+        val token = expectedCompositionUpdates.expect(
+            absoluteStart, composingText.length, editorComposingEnd, absoluteEnd
+        )
+        val accepted = safeEditorOperation("composition cursor movement") {
+            connection.setSelection(absoluteStart, absoluteEnd)
+        }
+        if (!accepted) {
+            expectedCompositionUpdates.cancel(token)
+            return false
+        }
+        composingSelectionStart = start
+        composingSelectionEnd = end
+        editorSelectionStart = absoluteStart
+        editorSelectionEnd = absoluteEnd
+        recomputePageFromComposing()
+        syncKeyboardView()
+        return true
+    }
+
+    private fun moveEditingCursor(steps: Int): Boolean {
+        if (!synchronizePendingComposition()) return false
+        val connection = currentInputConnection ?: return false
+        if (composingText.isEmpty()) {
+            return safeEditorOperation("cursor movement") { CursorNavigation.move(connection, steps) }
+        }
+        if (steps == 0) return true
+        val (start, end) = composingSelection()
+        val anchor = if (steps > 0) end else start
+        val remaining = steps.coerceIn(-64, 64) -
+            if (start == end) 0 else if (steps > 0) 1 else -1
+        val target = anchor + remaining
+        if (target !in 0..composingText.length) {
+            // Leaving the reading keeps its literal text; navigation never picks a candidate.
+            if (!finishRawCompositionForEditing()) return false
+            return safeEditorOperation("cursor movement") { CursorNavigation.move(connection, steps) }
+        }
+        return setCompositionSelection(target, target)
+    }
+
+    private fun finishRawCompositionForEditing(): Boolean {
+        if (!synchronizePendingComposition()) return false
+        if (composingText.isEmpty()) return true
+        if (!safeEditorOperation("finish reading for editing") {
+                currentInputConnection?.finishComposingText() == true
+            }
+        ) return false
+        resetToInitial()
+        return true
+    }
+
     private fun handleEditAction(label: String) {
-        if (editorKeyboardMode != EditorKeyboardMode.ZHUYIN || !drainComposing(recordLearning = false)) return
+        if (editorKeyboardMode != EditorKeyboardMode.ZHUYIN) return
         lastCommittedWord = ""
+        if (label == "◀" || label == "▶") {
+            if (moveEditingCursor(if (label == "◀") -1 else 1)) vibrateLight()
+            return
+        }
+        if (!finishRawCompositionForEditing()) return
         val connection = currentInputConnection ?: return
         val handled = safeEditorOperation("edit tool $label") {
             when (label) {
@@ -998,8 +1103,6 @@ class IOSZhuyinIME : InputMethodService() {
                 "複製" -> connection.performContextMenuAction(android.R.id.copy)
                 "剪下" -> connection.performContextMenuAction(android.R.id.cut)
                 "貼上" -> connection.performContextMenuAction(android.R.id.pasteAsPlainText)
-                "◀" -> CursorNavigation.move(connection, -1)
-                "▶" -> CursorNavigation.move(connection, 1)
                 else -> false
             }
         }
@@ -1013,7 +1116,7 @@ class IOSZhuyinIME : InputMethodService() {
 
     private fun openClipboard() {
         if (editorKeyboardMode != EditorKeyboardMode.ZHUYIN || !personalizationAllowed) return
-        if (!drainComposing(recordLearning = false)) return
+        if (!finishRawCompositionForEditing()) return
         lastCommittedWord = ""
         showNextWordSuggestions()
         inputContainer?.openClipboard()
@@ -1144,6 +1247,8 @@ class IOSZhuyinIME : InputMethodService() {
 
     private fun resetToInitial() {
         composingText.clear()
+        composingSelectionStart = -1
+        composingSelectionEnd = -1
         nextWordCandidates = emptySet()
         editorCompositionPending = false
         clearExpectedCompositionUpdates()
@@ -1159,7 +1264,8 @@ class IOSZhuyinIME : InputMethodService() {
         syncKeyboardView()
     }
 
-    private fun vibrateLight() {
+    private fun vibrateLight(force: Boolean = false) {
+        if (!force && keyboardView?.consumeCommittingHaptic() == true) return
         try {
             val currentVibrator = vibrator ?: return
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
@@ -1269,8 +1375,8 @@ class IOSZhuyinIME : InputMethodService() {
         editorComposingEnd = candidatesEnd
         if (matchesExpectedComposition && candidatesEnd < 0) {
             val match = requireNotNull(expectedMatch)
-            editorComposingStart = match.cursor - match.length
-            editorComposingEnd = match.cursor
+            editorComposingStart = match.composingEnd - match.length
+            editorComposingEnd = match.composingEnd
         }
         if (matchesExpectedComposition) {
             // Some custom editors omit composing bounds even after accepting
@@ -1303,15 +1409,17 @@ class IOSZhuyinIME : InputMethodService() {
             return
         }
 
-        val remainsAtComposingEnd = EditorSelectionBehavior.matchesCurrentComposition(
-            selectionStart = newSelStart,
-            selectionEnd = newSelEnd,
-            candidatesStart = candidatesStart,
-            candidatesEnd = candidatesEnd,
-            composingLength = composingText.length
-        )
-        if (remainsAtComposingEnd) {
+        if (candidatesStart >= 0 && candidatesEnd - candidatesStart == composingText.length &&
+            newSelStart in candidatesStart..candidatesEnd &&
+            newSelEnd in candidatesStart..candidatesEnd
+        ) {
+            composingSelectionStart = minOf(newSelStart, newSelEnd) - candidatesStart
+            composingSelectionEnd = maxOf(newSelStart, newSelEnd) - candidatesStart
             editorCompositionPending = false
+            // User navigation supersedes outstanding writes at the old caret.
+            expectedCompositionUpdates.advance()
+            recomputePageFromComposing()
+            syncKeyboardView()
             return
         }
 

@@ -2,12 +2,26 @@
 
 ## Permanent identity
 
-Keep application ID / namespace `com.ioszhuyin.keyboard` and the registered
-`.IOSZhuyinIME` component. Existing installations and Android's enabled-IME
-selection refer to these identifiers. Renaming them offers no user benefit and
-would create a different app or invalidate that selection. The Gradle project
-and resource theme names are now DynamicZhuyinKeyboard / Theme.DynamicZhuyin.
-This is a deliberate compatibility decision for issue #7.
+The `distribution` flavor dimension gives two permanent installation identities:
+
+| Flavor | Application ID | Signed by | IME component |
+|---|---|---|---|
+| `github` | `com.ioszhuyin.keyboard` | the persistent GitHub keystore | `com.ioszhuyin.keyboard/.IOSZhuyinIME` |
+| `play` | `dynamic.zhuyin.keyboard` | Google Play app signing | `dynamic.zhuyin.keyboard/com.ioszhuyin.keyboard.IOSZhuyinIME` |
+
+The GitHub identity (package name and signing certificate) is registered in the
+Android developer console. Never change its application ID or key: existing
+installations, their enabled-IME selection and that registration depend on them.
+The Play identity matches the owner's Google Play Console app. The two are
+separate apps; they can be installed side by side, do not share data and cannot
+update each other.
+
+The Kotlin/resource namespace remains `com.ioszhuyin.keyboard` for both; it is
+independent of the installation ID. The fully qualified settings activity remains
+`com.ioszhuyin.keyboard.MainActivity`.
+
+Debug builds append `.debug` to either ID and are labeled 動態注音鍵盤（測試版）, so they
+install beside the released app with separate data and the debug key.
 
 ## Version policy
 
@@ -37,14 +51,24 @@ On Windows:
 ```powershell
 $env:ZHUYIN_SIGNING_PROPERTIES = 'C:/private/location/signing.properties'
 python tools/rebuild_dictionary.py --check
-.\gradlew.bat testDebugUnitTest lintDebug assembleRelease
+.\gradlew.bat testGithubDebugUnitTest lintGithubDebug lintPlayDebug assembleGithubRelease bundlePlayRelease
 ```
 
 On Linux/macOS, set the same environment variable and use `./gradlew`.
 Without signing configuration, release packaging fails. Debug CI needs no keys.
-The signed output is `app/build/outputs/apk/release/app-release.apk`.
-Use SDK `apksigner verify --verbose --print-certs` to verify it, and compare the
-certificate SHA-256 with the previous stable release before publishing.
+The signed GitHub APK is `app/build/outputs/apk/github/release/app-github-release.apk`.
+The signed Play upload is `app/build/outputs/bundle/playRelease/app-play-release.aab`.
+Never publish a `play` APK on GitHub or upload a `github` bundle to Play.
+In Play Console open Closed testing > Alpha > Create new release and upload the
+AAB under App bundles. Expand the enabled enhancements and follow App signing
+(also under Protect with Play / App integrity) to inspect app-signing and
+upload certificates. The local AAB signing certificate must match the registered
+upload certificate; if no upload certificate is registered yet, Play displays it
+after the first AAB upload. App-signing and upload keys can be different. Do not replace
+an existing Play key or send private keystore files to chat or Git.
+
+Use SDK `apksigner verify --verbose --print-certs` to verify the GitHub APK, and
+compare the certificate SHA-256 with the previous stable release before publishing.
 
 Test an update on a disposable emulator: install the previous signed APK, then
 `adb install -r` the newer signed APK. Verify package version and retained data.

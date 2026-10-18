@@ -135,7 +135,7 @@ class MainActivity : AppCompatActivity() {
         }
 
         val title = TextView(this).apply {
-            text = "動態注音鍵盤"
+            text = getString(R.string.app_name)
             textSize = 26f
             setTextColor(palette.title)
             gravity = Gravity.CENTER
@@ -172,12 +172,13 @@ class MainActivity : AppCompatActivity() {
         }, rowWeight())
         fontRow.addView(button("還原預設字型", palette.neutral) {
             runDictionaryTask("還原失敗", operation = { KeyboardFont.reset(this) }) {
+                refreshKeyboardFontPreview()
                 toast("已還原預設字型")
             }
         }, rowWeight())
         root.addView(fontRow)
         val appearance = keyboardMetricsPanel().apply { visibility = android.view.View.GONE }
-        root.addView(button("鍵盤高度與外觀", palette.primary) {
+        root.addView(button("字體大小、鍵盤高度與外觀", palette.primary) {
             appearance.visibility = if (appearance.visibility == android.view.View.VISIBLE)
                 android.view.View.GONE else android.view.View.VISIBLE
         })
@@ -415,7 +416,10 @@ class MainActivity : AppCompatActivity() {
                     dialog.setOnDismissListener(null)
                     runDictionaryTask("字型套用失敗", operation = {
                         try { KeyboardFont.apply(this, staged) } finally { staged.delete() }
-                    }) { toast("已套用鍵盤字型") }
+                    }) {
+                        refreshKeyboardFontPreview()
+                        toast("已套用鍵盤字型")
+                    }
                     dialog.dismiss()
                 }
             }
@@ -685,10 +689,30 @@ class MainActivity : AppCompatActivity() {
             setPadding(0, dp(12), 0, dp(8))
             addView(sectionTitle("鍵盤版面調整"))
             addView(TextView(this@MainActivity).apply {
-                text = "調整會自動儲存。下方留白可把鍵盤往上移；點試打框即可查看效果。"
+                text = "調整會自動儲存，立即套用到鍵盤按鍵上的注音與聲調。點試打欄即可查看；字形超出按鍵時才會縮小。下方留白可把鍵盤往上移。"
                 setTextColor(palette.status)
             })
-            addView(editText("點此試打，檢查鍵盤高度"))
+            addView(editText("點此試打，檢查字體與鍵盤高度"))
+            addView(metricSlider("注音字大小", KeyboardMetrics.KEY_ZHUYIN_FONT_SIZE, 16f, 40f))
+            addView(TextView(this@MainActivity).apply {
+                text = "字級示意（實際大小請看下方鍵盤）"
+                setTextColor(palette.status)
+                textSize = 12f
+            })
+            val previewFallback = android.graphics.Typeface.createFromAsset(assets, "bopomofo.ttf")
+            val preview = TextView(this@MainActivity).apply {
+                text = "ㄅ ㄆ ㄇ ㄈ　ㄧ ㄨ ㄩ　ˊ ˇ ˋ ˙"
+                setTextColor(palette.title)
+                setPadding(0, dp(8), 0, dp(8))
+            }
+            metricRefreshers["zhuyin_preview"] = {
+                preview.typeface = KeyboardFont.choose(preview.text.toString(),
+                    KeyboardFont.load(this@MainActivity), previewFallback)
+                preview.setTextSize(android.util.TypedValue.COMPLEX_UNIT_DIP,
+                    KeyboardMetrics.current(this@MainActivity).zhuyinFontSize)
+            }
+            metricRefreshers.getValue("zhuyin_preview").invoke()
+            addView(preview)
 
             val presetRow = row()
             presetRow.addView(button("Pixel 預設", palette.debugPixel) {
@@ -710,6 +734,54 @@ class MainActivity : AppCompatActivity() {
             addView(metricSlider("空白鍵寬度比例", KeyboardMetrics.KEY_SPACEBAR_RATIO, 2.5f, 7f))
             addView(metricSlider("候選列高度", KeyboardMetrics.KEY_CANDIDATE_BAR_HEIGHT, 24f, 64f))
             addView(metricSlider("候選字大小", KeyboardMetrics.KEY_CANDIDATE_FONT_SIZE, 14f, 28f))
+            addView(keySoundSettings())
+        }
+    }
+
+    private fun keySoundSettings(): LinearLayout {
+        val volumeLabel = TextView(this).apply {
+            setTextColor(palette.status)
+            textSize = 13f
+            text = "按鍵音音量: ${KeyboardSound.volume(this@MainActivity)}"
+        }
+        val volume = SeekBar(this).apply {
+            max = 100
+            progress = KeyboardSound.volume(this@MainActivity)
+            isEnabled = KeyboardSound.enabled(this@MainActivity)
+            setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
+                override fun onProgressChanged(seekBar: SeekBar?, progress: Int, fromUser: Boolean) {
+                    if (!fromUser) return
+                    KeyboardSound.setVolume(this@MainActivity, progress)
+                    volumeLabel.text = "按鍵音音量: $progress"
+                }
+                override fun onStartTrackingTouch(seekBar: SeekBar?) {}
+                override fun onStopTrackingTouch(seekBar: SeekBar?) {
+                    KeyboardSound.play(this@MainActivity, android.media.AudioManager.FX_KEYPRESS_STANDARD)
+                }
+            })
+        }
+        return LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            addView(sectionTitle("按鍵音"))
+            addView(android.widget.Switch(this@MainActivity).apply {
+                text = "按鍵時播放聲音"
+                setTextColor(palette.title)
+                isChecked = KeyboardSound.enabled(this@MainActivity)
+                setOnCheckedChangeListener { _, checked ->
+                    KeyboardSound.setEnabled(this@MainActivity, checked)
+                    volume.isEnabled = checked
+                    if (checked) {
+                        KeyboardSound.play(this@MainActivity, android.media.AudioManager.FX_KEYPRESS_STANDARD)
+                    }
+                }
+            })
+            addView(TextView(this@MainActivity).apply {
+                text = "獨立於系統「觸控音效」設定。手機在靜音或震動模式時不會發出聲音。"
+                setTextColor(palette.status)
+                textSize = 12f
+            })
+            addView(volumeLabel)
+            addView(volume)
         }
     }
 
@@ -720,6 +792,10 @@ class MainActivity : AppCompatActivity() {
             setTextColor(palette.title)
             setPadding(0, dp(10), 0, dp(8))
         }
+
+    private fun refreshKeyboardFontPreview() {
+        metricRefreshers["zhuyin_preview"]?.invoke()
+    }
 
     private fun metricSlider(labelText: String, key: String, min: Float, max: Float): LinearLayout {
         val prefs = KeyboardMetrics.prefs(this)
@@ -762,6 +838,7 @@ class MainActivity : AppCompatActivity() {
         }
 
     private fun metricValue(metrics: KeyboardLayoutMetrics, key: String): Float = when (key) {
+        KeyboardMetrics.KEY_ZHUYIN_FONT_SIZE -> metrics.zhuyinFontSize
         KeyboardMetrics.KEY_KEY_HEIGHT -> metrics.keyHeight
         KeyboardMetrics.KEY_HORIZONTAL_GAP -> metrics.horizontalGap
         KeyboardMetrics.KEY_VERTICAL_GAP -> metrics.verticalGap

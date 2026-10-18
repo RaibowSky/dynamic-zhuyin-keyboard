@@ -13,7 +13,7 @@
 
 ### 直接下載 APK
 
-也可[下載 Android APK（v1.2.0）](https://github.com/RaibowSky/dynamic-zhuyin-keyboard/releases/download/v1.2.0/dynamic-zhuyin-1.2.0.apk)，下載後開啟 `.apk` 安裝。
+也可[下載 Android APK（v1.3.0）](https://github.com/RaibowSky/dynamic-zhuyin-keyboard/releases/download/v1.3.0/dynamic-zhuyin-1.3.0.apk)，下載後開啟 `.apk` 安裝。
 
 [最新版本與更新說明](https://github.com/RaibowSky/dynamic-zhuyin-keyboard/releases/latest) · [安裝與舊版升級說明](#安裝)
 
@@ -42,9 +42,12 @@
 - 連續整句解碼：組合多個已知詞與單字，支援「一／不」變調與保留後綴的首字修正。
 - 注音、英文、數字與符號頁；「ABC」／「注」在同一套鍵盤內一鍵往返。
 - 系統淺色／深色主題、可預覽的本機 TTF／OTF 字型匯入與預設字型還原。
+- 在「字體大小、鍵盤高度與外觀」調整注音字大小（16–40）並即時預覽；注音／聲調與候選字可分開調整。
+- Emoji 分為表情、手勢、動物、飲食、活動、旅行、符號七類，使用 ◀／▶ 翻頁；空白鍵旁顯示目前頁碼。
 - 本機候選學習：常用的字／詞會隨著使用往前排。
 - 使用者詞典：支援手動詞彙、暫停／清除學習、匯入／匯出。
 - 一聲與空白鍵邏輯合併，不另外顯示一聲按鍵。
+- 未選字的注音可點入原文或長按空白左右滑動游標，從中間補字、刪除或改聲調；移動游標不會自動選第一組候選。游標移出注音範圍時保留原注音文字。
 
 ## 安裝
 
@@ -52,12 +55,14 @@ Google Play 測試版請依照[上方步驟](#-透過-google-play-參加測試�
 正式簽署 APK 與 checksum 請見 [Releases](https://github.com/RaibowSky/dynamic-zhuyin-keyboard/releases/latest)。
 Android 7.0 以上可安裝。1.1.1 起內建英文鍵盤，不再需要另一套輸入法來輸入英文。
 
-Google Play 版使用新的應用程式 ID `dynamic.zhuyin.keyboard`。從舊版 `com.ioszhuyin.keyboard` 轉換時，
-Android 會將它視為另一個 App：請先在舊版匯出使用者詞典，再於新版匯入，並重新啟用與切換鍵盤。
-設定與剪貼簿歷史不會自動轉移；匯出前請勿移除舊版。
+GitHub 直接下載的 APK 與 Google Play 版是兩個獨立的 App，請擇一安裝：
+
+- GitHub APK：應用程式 ID `com.ioszhuyin.keyboard`，可直接覆蓋更新先前的 GitHub 版本，資料會保留。
+- Google Play：應用程式 ID `dynamic.zhuyin.keyboard`，由 Google Play 更新。
+
+兩者可同時安裝但資料不互通，也不能互相覆蓋更新。
 
 舊 Build Week debug 版簽章不同，轉換前請先匯出字典，再移除舊版、安裝正式版。
-直接更新需使用相同應用程式 ID 與相容簽章；Google Play 與直接下載的 APK 不保證能互相覆蓋安裝。
 詳見[發版與版本規則](docs/RELEASING.md)。
 
 也可以從原始碼自行建置：
@@ -74,22 +79,24 @@ Android 會將它視為另一個 App：請先在舊版匯出使用者詞典，�
 在 Windows PowerShell 執行：
 
 ```powershell
-.\gradlew.bat testDebugUnitTest lintDebug assembleDebug
+.\gradlew.bat testGithubDebugUnitTest lintGithubDebug assembleGithubDebug
 ```
 
 產生的 APK 位於：
 
 ```text
-app/build/outputs/apk/debug/app-debug.apk
+app/build/outputs/apk/github/debug/app-github-debug.apk
 ```
+
+Debug APK 使用開發測試簽章，套件名稱為 `com.ioszhuyin.keyboard.debug`，顯示為「動態注音鍵盤（測試版）」。可與正式版並存；設定與字典各自保存。
 
 也可以連接已開啟 USB 偵錯的 Android 裝置後直接安裝：
 
 ```powershell
-.\gradlew.bat installDebug
+.\gradlew.bat installGithubDebug
 ```
 
-安裝後開啟「動態注音鍵盤」應用程式：
+安裝後開啟「動態注音鍵盤（測試版）」應用程式：
 
 1. 點選「啟用鍵盤」，在 Android 輸入法設定中啟用「動態注音鍵盤」。
 2. 返回應用程式並點選「切換鍵盤」，選擇「動態注音鍵盤」。
@@ -156,7 +163,7 @@ McBopomofo 的多字片語讀音會補充台灣常用詞，並使用其彙總詞
 - 先確認 issue 尚未有人處理，並在 issue 中說明你的計畫。
 - 新增第三方資料、詞庫、字型或素材前，請先確認授權，並同步更新 `NOTICE.md` 與
   `NOTICE.zh-TW.md`（包含來源網址、取得日期、授權條款與轉換方式）。
-- 修改後請執行 `.\gradlew.bat testDebugUnitTest lintDebug assembleDebug` 確認測試、
+- 修改後請執行 `.\gradlew.bat testGithubDebugUnitTest lintGithubDebug assembleGithubDebug` 確認測試、
   lint 與建置通過。
 - 發 PR 前請與 `main` 同步，並清楚說明改動範圍。
 
