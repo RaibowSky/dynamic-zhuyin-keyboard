@@ -58,14 +58,15 @@ For the Google Play test, follow the [steps above](#-join-the-test-and-download-
 Download the signed APK and checksum from [Releases](https://github.com/RaibowSky/dynamic-zhuyin-keyboard/releases/latest).
 Requires Android 7.0+. Version 1.1.1 restores built-in English, so another keyboard is no longer required for English input.
 
-The Google Play version uses the new application ID `dynamic.zhuyin.keyboard`.
-Android treats it as a separate app from the previous `com.ioszhuyin.keyboard` version:
-export your user dictionary from the old app, import it into the new app, and enable/select the new keyboard.
-Settings and clipboard history do not transfer automatically. Do not uninstall the old app before exporting.
+The directly downloaded GitHub APK and the Google Play version are two separate apps; install one of them:
+
+- GitHub APK: application ID `com.ioszhuyin.keyboard`. It updates previous GitHub releases in place and keeps your data.
+- Google Play: application ID `dynamic.zhuyin.keyboard`, updated through Google Play.
+
+Both can be installed side by side, but they do not share data and cannot update each other.
 
 The old Build Week debug build has a different signature: export your dictionary,
-uninstall the demo, then install stable. In-place updates require the same application ID and a compatible signing certificate;
-Google Play builds and directly downloaded APKs are not guaranteed to update each other.
+uninstall the demo, then install stable.
 See [release/version policy](docs/RELEASING.md).
 
 You can also build from source:
@@ -82,19 +83,19 @@ Requirements:
 From Windows PowerShell, run:
 
 ```powershell
-.\gradlew.bat testDebugUnitTest lintDebug assembleDebug
+.\gradlew.bat testGithubDebugUnitTest lintGithubDebug assembleGithubDebug
 ```
 
 The generated APK is written to:
 
 ```text
-app/build/outputs/apk/debug/app-debug.apk
+app/build/outputs/apk/github/debug/app-github-debug.apk
 ```
 
 To install directly on an Android device with USB debugging enabled:
 
 ```powershell
-.\gradlew.bat installDebug
+.\gradlew.bat installGithubDebug
 ```
 
 After installation, open the Dynamic Zhuyin Keyboard app:
@@ -174,7 +175,7 @@ Before contributing:
 - Before adding third-party data, dictionaries, fonts, or assets, verify the
   license and update `NOTICE.md` and `NOTICE.zh-TW.md` with the source URL,
   retrieval date, license terms, and transformation.
-- Run `.\gradlew.bat testDebugUnitTest lintDebug assembleDebug` to verify tests,
+- Run `.\gradlew.bat testGithubDebugUnitTest lintGithubDebug assembleGithubDebug` to verify tests,
   lint, and the build.
 - Rebase or sync with `main` before opening a PR, and describe the change scope
   clearly.

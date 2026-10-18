@@ -20,12 +20,25 @@ android {
     buildToolsVersion = "36.1.0"
 
     defaultConfig {
-        applicationId = "com.ioszhuyin.keyboard"
         minSdk = 24
         targetSdk = 36
-        versionCode = 4
-        versionName = "1.2.0"
+        versionCode = 5
+        versionName = "1.3.0"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+    }
+
+    // Two permanent installation identities; see docs/RELEASING.md.
+    flavorDimensions += "distribution"
+    productFlavors {
+        create("github") {
+            dimension = "distribution"
+            isDefault = true
+            applicationId = "com.ioszhuyin.keyboard"
+        }
+        create("play") {
+            dimension = "distribution"
+            applicationId = "dynamic.zhuyin.keyboard"
+        }
     }
 
     signingConfigs {
@@ -72,7 +85,7 @@ android {
 // Fail closed: an accidental local release must never silently use a debug key
 // or leave an unsigned APK that might be uploaded as a release.
 tasks.configureEach {
-    if (name == "validateSigningRelease" || name == "packageRelease" || name == "signReleaseBundle") {
+    if (name.matches(Regex("(validateSigning|package)\\w*Release|sign\\w*ReleaseBundle"))) {
         doFirst {
             check(releaseSigningPath.isPresent) { "Set ZHUYIN_SIGNING_PROPERTIES to your private signing.properties file" }
         }

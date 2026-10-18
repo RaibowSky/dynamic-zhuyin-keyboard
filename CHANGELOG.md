@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.3.0 (Unreleased)
+
+- Add `github` and `play` distribution flavors. GitHub APKs keep `com.ioszhuyin.keyboard` and update previous GitHub releases in place; the Google Play build uses `dynamic.zhuyin.keyboard`. The two are separate apps that do not share data. Kotlin/resource namespace remains unchanged.
+
 ## 1.2.0 (2026-10-04)
 
 - Share one fixed-height header between idle tools, composition candidates and next-word predictions. The first Backspace dismisses predictions without deleting; another press deletes normally.
