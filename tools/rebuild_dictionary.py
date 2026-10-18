@@ -30,9 +30,12 @@ def main():
     text += (f"\nPhrase readings: McBopomofo BPMFMappings.txt\nPinned commit: {MCBOPOMOFO_COMMIT}\n"
              f"Source SHA-256: {MCBOPOMOFO_MAPPINGS_SHA256}\n"
              "Transformation: merge toned/untoned keys, deduplicate and rank by phrase.occ.\n"
-             "BPMFMappings originated from libtabe tsi.src (BSD); see McBopomofo upstream data notices.\n"
+             "BPMFMappings originated from libtabe tsi.src (BSD-style); notices and "
+             "acknowledgements are in libtabe_LICENSE.txt.\n"
              "Retained CC-CEDICT input: tools/data/cedict.txt.gz\n"
-             f"Retained archive SHA-256: {CC_CEDICT_ARCHIVE_SHA256}\n")
+             f"Retained archive SHA-256: {CC_CEDICT_ARCHIVE_SHA256}\n"
+             "\nNext-word suggestions: next_word.tsv is derived from the same McBopomofo "
+             "phrase.occ (MIT License above) by tools/build_next_word_table.py.\n")
     license_file.write_text(text, encoding="utf-8", newline="\n")
     for file in (target, license_file):
         destination = ASSETS / file.name

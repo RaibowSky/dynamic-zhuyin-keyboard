@@ -266,8 +266,24 @@ class MainActivity : AppCompatActivity() {
             setPadding(0, dp(12), 0, 0)
         }
         root.addView(info)
+        root.addView(button("開放原始碼授權", palette.neutral) { showOpenSourceLicenses() })
 
         setContentView(ScrollView(this).apply { addView(root) })
+    }
+
+    private fun showOpenSourceLicenses() {
+        val body = TextView(this).apply {
+            text = OpenSourceNotices.text(this@MainActivity)
+            textSize = 12f
+            setTextColor(palette.title)
+            setTextIsSelectable(true)
+            setPadding(dp(20), dp(12), dp(20), dp(12))
+        }
+        AlertDialog.Builder(this)
+            .setTitle("開放原始碼授權")
+            .setView(ScrollView(this).apply { addView(body) })
+            .setPositiveButton("關閉", null)
+            .show()
     }
 
     private fun addEntry() {
