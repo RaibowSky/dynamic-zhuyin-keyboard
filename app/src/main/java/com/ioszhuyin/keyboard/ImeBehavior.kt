@@ -652,6 +652,8 @@ internal class BackspaceRepeater(
     private val deleteOnce: () -> Unit,
     private val schedule: (Runnable, Long) -> Unit,
     private val cancel: (Runnable) -> Unit,
+    /** Runs before each automatic repeat; the first press already gave touch-down feedback. */
+    private val onRepeat: () -> Unit = {},
     private val initialDelayMillis: Long = 400L,
     private val repeatDelayMillis: Long = 80L
 ) {
@@ -665,6 +667,7 @@ internal class BackspaceRepeater(
         val task = object : Runnable {
             override fun run() {
                 if (!held) return
+                onRepeat()
                 deleteOnce()
                 schedule(this, repeatDelayMillis)
             }
