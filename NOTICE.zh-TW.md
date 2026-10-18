@@ -16,6 +16,8 @@
 - 授權：Creative Commons Attribution-ShareAlike 4.0 International
   (CC BY-SA 4.0)
 - 授權網址：https://creativecommons.org/licenses/by-sa/4.0/
+- 保留來源檔頭的著作權聲明：
+  Referenced works: CEDICT - Copyright (C) 1997, 1998 Paul Andrew Denisowski
 - 本地轉換腳本：`tools/build_zhuyin_dictionary.py`
 - 打包資產 SHA-256：`df1664881c7417be73d430ee90915ba13d70aa67f19632a70d170bdeefb5ead9`
 
@@ -55,7 +57,9 @@ MDBG 網址僅記錄來源，重建不會下載可變動的最新版。執行
 - 著作權標示：Copyright (c) 2011-2026 Mengjuei Hsieh et al.
 - 本地授權副本：`tools/data/McBopomofo_LICENSE.txt`
 
-本專案將片語讀音表轉成有聲調與無聲調的注音查詢鍵，與 CC-CEDICT 衍生候選去重合併，再使用彙總詞頻排序。上游資料說明指出 `BPMFMappings.txt` 最初由 BSD 授權的 libtabe `tsi.src` 簡化後持續修改。本專案不會打包 McBopomofo 應用程式原始碼、原始語料或 IVS 資料；產生後的資產會在 `app/src/main/assets/zhuyin_cedict_LICENSE.txt` 保留來源與授權標示。
+本專案將片語讀音表轉成有聲調與無聲調的注音查詢鍵，與 CC-CEDICT 衍生候選去重合併，再使用彙總詞頻排序。上游資料說明指出 `BPMFMappings.txt` 最初由 libtabe 的 `tsi.src` 簡化後持續修改。libtabe 的 BSD 式授權聲明（TaBE Project、Pai-Hsiang Hsiao，以及中央研究院資訊科學研究所 Computer Systems and Communication Lab），連同 0.2.5 版授權要求的廣告致謝文字，完整收錄於 `app/src/main/assets/libtabe_LICENSE.txt`。本專案不會打包 McBopomofo 應用程式原始碼、原始語料或 IVS 資料；產生後的資產會在 `app/src/main/assets/zhuyin_cedict_LICENSE.txt` 保留來源與授權標示。
+
+`app/src/main/assets/next_word.tsv`（下一詞建議）由 `tools/build_next_word_table.py` 從同一份 `phrase.occ` 產生：每個詞語把後續字詞加到它的短前綴下，只保留最常見的接續詞。它適用上方的 MIT 授權，該授權全文也收錄在 `zhuyin_cedict_LICENSE.txt`。
 
 ### ToneOZ 拼音文楷注音 subset
 
@@ -80,6 +84,8 @@ subset 包含 U+3105-U+3129 與 U+02C7、U+02C9、U+02CA、U+02CB、U+02D9。字
 ## 未打包的參考資料
 
 本專案為獨立實作。
+
+本專案與 Apple Inc. 無關，也未獲其背書或贊助。repository 名稱、套件名稱與類別名稱中的「iOS」僅用來描述啟發本設計的鍵盤操作方式。iOS 是 Apple Inc. 的商標或註冊商標。本專案不包含任何 Apple 原始碼、圖像、音效或其他素材。
 
 開發過程中曾參考公開可取得的中文輸入法與語言資源，以了解一般輸入流程、鍵盤互動設計及注音輸入習慣。
 
