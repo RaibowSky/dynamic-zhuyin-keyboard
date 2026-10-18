@@ -106,15 +106,25 @@ The font software was modified only by subsetting; the retained glyph outlines
 were not modified. The bundled subset SHA-256 is
 `7d2630c930012253c214100dae4fdccef582ed02be6bcbc313bed831ad672800`.
 
+### Libraries compiled into the app
+
+The app is built with AndroidX, Material Components for Android, the Kotlin
+standard library, kotlinx.coroutines and a few annotation libraries, all under
+the Apache License 2.0. `app/src/main/assets/dependencies_NOTICE.txt` lists the
+release-build versions and reproduces the upstream Kotlin and kotlinx.coroutines
+NOTICE files; `app/src/main/assets/apache_LICENSE-2.0.txt` is a copy of the
+repository `LICENSE`. Both are shown on the in-app 開放原始碼授權 page. Update
+the list when dependencies change
+(`gradlew :app:dependencies --configuration githubReleaseRuntimeClasspath`).
+
 ## Non-Bundled References
 
 This project was implemented independently.
 
 This project is not affiliated with, endorsed by, or sponsored by Apple Inc.
 "iOS" in the repository name, package name and class names describes the
-keyboard behavior that inspired the design. iOS is a trademark or registered
-trademark of Apple Inc. No Apple source code, artwork, sounds, or other assets
-are included.
+keyboard behavior that inspired the design. No Apple source code, artwork,
+sounds, or other assets are included.
 
 During development, publicly available Chinese input methods and linguistic
 resources were consulted to understand general input workflows, keyboard

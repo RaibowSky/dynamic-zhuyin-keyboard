@@ -81,11 +81,15 @@ MDBG 網址僅記錄來源，重建不會下載可變動的最新版。執行
 
 subset 包含 U+3105-U+3129 與 U+02C7、U+02C9、U+02CA、U+02CB、U+02D9。字型軟體只因 subset 而修改，保留的 glyph outlines 沒有修改。打包檔案的 SHA-256 為 `7d2630c930012253c214100dae4fdccef582ed02be6bcbc313bed831ad672800`。
 
+### 編譯進 App 的程式庫
+
+App 使用 AndroidX、Material Components for Android、Kotlin 標準函式庫、kotlinx.coroutines 及少數 annotation 程式庫，全部採用 Apache License 2.0。`app/src/main/assets/dependencies_NOTICE.txt` 列出 release 版實際使用的版本，並收錄上游 Kotlin 與 kotlinx.coroutines 的 NOTICE；`app/src/main/assets/apache_LICENSE-2.0.txt` 是 repository `LICENSE` 的副本。兩者都會顯示在 App 內的「開放原始碼授權」頁。依賴變更時請同步更新清單（`gradlew :app:dependencies --configuration githubReleaseRuntimeClasspath`）。
+
 ## 未打包的參考資料
 
 本專案為獨立實作。
 
-本專案與 Apple Inc. 無關，也未獲其背書或贊助。repository 名稱、套件名稱與類別名稱中的「iOS」僅用來描述啟發本設計的鍵盤操作方式。iOS 是 Apple Inc. 的商標或註冊商標。本專案不包含任何 Apple 原始碼、圖像、音效或其他素材。
+本專案與 Apple Inc. 無關，也未獲其背書或贊助。repository 名稱、套件名稱與類別名稱中的「iOS」僅用來描述啟發本設計的鍵盤操作方式。本專案不包含任何 Apple 原始碼、圖像、音效或其他素材。
 
 開發過程中曾參考公開可取得的中文輸入法與語言資源，以了解一般輸入流程、鍵盤互動設計及注音輸入習慣。
 
