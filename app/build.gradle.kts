@@ -40,7 +40,8 @@ android {
     }
     buildTypes {
         debug {
-            versionNameSuffix = "-dev"
+            applicationIdSuffix = ".debug"
+            versionNameSuffix = "-test"
         }
         release {
             if (releaseSigningPath.isPresent) signingConfig = signingConfigs.getByName("stable")

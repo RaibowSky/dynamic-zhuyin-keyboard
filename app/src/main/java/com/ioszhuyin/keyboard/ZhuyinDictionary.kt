@@ -5,6 +5,8 @@ import android.os.ParcelFileDescriptor
 import java.io.IOException
 import java.nio.ByteBuffer
 import java.nio.channels.FileChannel
+import java.util.concurrent.Future
+import java.util.concurrent.FutureTask
 
 /**
  * Zhuyin dictionary backed by a generated CC-CEDICT and McBopomofo asset.
@@ -21,6 +23,24 @@ object ZhuyinDictionary {
     private var dictionary: SortedTsvDictionary? = null
     @Volatile
     private var syllableMetadata: SyllableMetadata? = null
+    private val preloadLock = Any()
+    private var typingPreload: FutureTask<Unit>? = null
+
+    /** Prepare immutable syllable metadata and single-symbol prefix caches before typing.
+     * Queries remain correct when typing begins before this optional warmup completes.
+     */
+    internal fun preloadForTyping(context: Context, prefixLimit: Int): Future<Unit> = synchronized(preloadLock) {
+        typingPreload ?: FutureTask<Unit> {
+            android.os.Process.setThreadPriority(android.os.Process.THREAD_PRIORITY_BACKGROUND)
+            initialize(context.applicationContext)
+            metadata()
+            for (symbol in ZHUYIN_CHARS) getPrefixCandidates(symbol.toString(), prefixLimit)
+            Unit
+        }.also { task ->
+            typingPreload = task
+            Thread(task, "zhuyin-typing-preload").apply { isDaemon = true }.start()
+        }
+    }
 
     fun initialize(context: Context) {
         if (dictionary != null) return

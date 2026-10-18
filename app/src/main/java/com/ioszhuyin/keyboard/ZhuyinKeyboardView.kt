@@ -69,6 +69,9 @@ class ZhuyinKeyboardView @JvmOverloads constructor(
     private var mode: Mode = Mode.ZHUYIN
     private var zhuyinModeAllowed: Boolean = true
     private var englishShifted: Boolean = false
+    private var emojiCategory = 0
+    private var emojiPage = 0
+    private val currentEmojiCategory get() = EmojiCatalog.categories[emojiCategory]
     private var returnKeyLabel: String = "換行"
     fun setMode(m: Mode) {
         mode = if (m in setOf(Mode.ZHUYIN, Mode.EMOJI) && !zhuyinModeAllowed) Mode.ENGLISH else m
@@ -165,6 +168,10 @@ class ZhuyinKeyboardView @JvmOverloads constructor(
     // Paints
     // ============================================================
     private val paintKeyText = Paint(Paint.ANTI_ALIAS_FLAG or Paint.SUBPIXEL_TEXT_FLAG)
+    private val paintZhuyinText = Paint(Paint.ANTI_ALIAS_FLAG or Paint.SUBPIXEL_TEXT_FLAG).apply {
+        textAlign = Paint.Align.LEFT
+    }
+    private val zhuyinGlyphBounds = Rect()
     private val paintKeyBg = Paint(Paint.ANTI_ALIAS_FLAG)
     private val paintKeyBgDisabled = Paint(Paint.ANTI_ALIAS_FLAG)
     private val paintKeyStroke = Paint(Paint.ANTI_ALIAS_FLAG)
@@ -271,11 +278,14 @@ class ZhuyinKeyboardView @JvmOverloads constructor(
         var rect: RectF = RectF()
     )
     private enum class ControlAction {
-        TOGGLE_FINALS, ENGLISH, NUMBER, SYMBOL, SPACE, RETURN, BACKSPACE, TONE_SELECT
+        TOGGLE_FINALS, ENGLISH, NUMBER, SYMBOL, SPACE, RETURN, BACKSPACE, TONE_SELECT,
+        EMOJI_RETURN, EMOJI_PREVIOUS, EMOJI_NEXT
     }
 
     private val zhuyinKeys = mutableListOf<ZhuyinKey>()
     private var keyHitBoxes: List<KeyboardHitBox> = emptyList()
+    private var keyVisualBoxes: List<KeyboardHitBox> = emptyList()
+    private var candidateHitBoxes: List<KeyboardHitBox> = emptyList()
     private var controlHitBoxes: List<KeyboardHitBox> = emptyList()
     private val controlKeys = mutableListOf<ControlKey>()
     private data class ToolKey(val label: String, val rect: RectF)
@@ -363,9 +373,10 @@ class ZhuyinKeyboardView @JvmOverloads constructor(
         val padTop = (height - contentH).coerceAtLeast(0f) + padTopMetric
 
         var y = padTop
-        val showingCandidates = composingActive || candidates.isNotEmpty()
+        val showingCandidates = mode != Mode.EMOJI && (composingActive || candidates.isNotEmpty())
         toolbarRect = if (showingCandidates) RectF() else RectF(padX, y, width - padX, y + candidateBarHeight)
         val toolLabels = when {
+            mode == Mode.EMOJI -> EmojiCatalog.categories.map { it.label }
             zhuyinModeAllowed && editTools -> EDIT_TOOL_LABELS
             zhuyinModeAllowed -> listOf(
             if (mode in setOf(Mode.ENGLISH, Mode.HALF_WIDTH_NUMBER, Mode.HALF_WIDTH_SYMBOL)) "半形" else "全形",
@@ -395,6 +406,7 @@ class ZhuyinKeyboardView @JvmOverloads constructor(
         if (candidateExpanded && candidateBarRect.height() > 0f) {
             zhuyinKeys.clear()
             keyHitBoxes = emptyList()
+            keyVisualBoxes = emptyList()
             controlHitBoxes = emptyList()
             controlKeys.clear()
             toneRects.clear()
@@ -437,6 +449,11 @@ class ZhuyinKeyboardView @JvmOverloads constructor(
         // ABC / 注在本鍵盤內往返；系統導覽列保留切換其他輸入法的入口。
         controlKeys.clear()
         val (actions, labels) = when {
+            mode == Mode.EMOJI -> Pair(
+                listOf(ControlAction.EMOJI_RETURN, ControlAction.EMOJI_PREVIOUS,
+                    ControlAction.SPACE, ControlAction.EMOJI_NEXT, ControlAction.RETURN),
+                listOf("返回", "◀", "空白 ${emojiPage + 1}/${currentEmojiCategory.pageCount}", "▶", returnKeyLabel)
+            )
             mode == Mode.ZHUYIN && showFinalPage -> Pair(
                 listOf(ControlAction.NUMBER, ControlAction.ENGLISH,
                     ControlAction.SPACE, ControlAction.TONE_SELECT),
@@ -518,16 +535,17 @@ class ZhuyinKeyboardView @JvmOverloads constructor(
         } else {
             height - systemBottomInset
         }
+        keyVisualBoxes = zhuyinKeys.map { key ->
+            KeyboardHitBox(
+                left = key.rect.left,
+                top = key.rect.top,
+                right = key.rect.right,
+                bottom = key.rect.bottom,
+                enabled = key.label.isNotEmpty()
+            )
+        }
         keyHitBoxes = KeyboardHitTesting.expandEnabledHits(
-            boxes = zhuyinKeys.map { key ->
-                KeyboardHitBox(
-                    left = key.rect.left,
-                    top = key.rect.top,
-                    right = key.rect.right,
-                    bottom = key.rect.bottom,
-                    enabled = key.label.isNotEmpty()
-                )
-            },
+            boxes = keyVisualBoxes,
             rows = zhuyinKeys.map { it.row },
             leftBound = 0f,
             rightBound = width.toFloat(),
@@ -592,6 +610,7 @@ class ZhuyinKeyboardView @JvmOverloads constructor(
 
     private fun layoutCandidateCells() {
         candidateCells.clear()
+        candidateHitBoxes = emptyList()
         candidateToggleRect = RectF()
         candidateContentHeight = 0f
         if (candidateBarRect.height() <= 0f || candidates.isEmpty()) return
@@ -643,6 +662,10 @@ class ZhuyinKeyboardView @JvmOverloads constructor(
                 RectF(left, top, left + cellWidth, top + cellHeight)
             )
         }
+        candidateHitBoxes = candidateCells.map { cell ->
+            KeyboardHitBox(cell.rect.left, cell.rect.top, cell.rect.right, cell.rect.bottom,
+                enabled = RectF.intersects(candidateBarRect, cell.rect))
+        }
     }
 
     fun refresh() {
@@ -651,11 +674,11 @@ class ZhuyinKeyboardView @JvmOverloads constructor(
     }
 
     private fun currentKeyRows(): List<KeyRowSpec> = when (mode) {
-        Mode.EMOJI -> listOf(
-            rowSpec(listOf("😀", "😄", "😂", "😊", "😍", "🥰", "😘", "😎", "🥳", "😭"), 0f),
-            rowSpec(listOf("😅", "🤣", "😢", "😡", "🤔", "🙏", "👍", "👏", "💪", "❤️"), 0f),
-            rowSpec(listOf("🎉", "🎂", "🎁", "✨", "🔥", "✅", "👋", "🌹", "☕", "⌫"), 0f)
-        )
+        Mode.EMOJI -> {
+            val entries = currentEmojiCategory.page(emojiPage)
+            val slots = entries + List(EmojiCatalog.PAGE_SIZE - entries.size) { "" } + "⌫"
+            slots.chunked(10).map { rowSpec(it, 0f) }
+        }
         Mode.ZHUYIN -> {
             val sourceRows = if (showFinalPage) {
                 ZhuyinDynamicLayout.FINAL_PAGE_ROWS
@@ -779,7 +802,13 @@ class ZhuyinKeyboardView @JvmOverloads constructor(
         paintToolbar.textSize = dp(15f) * layoutHeightScale
         paintToolbar.typeface = Typeface.DEFAULT
         for (tool in toolKeys) {
-            drawRoundRect(canvas, tool.rect, palette.candidateBar, cornerRadius)
+            val selectedCategory = mode == Mode.EMOJI && tool.label == currentEmojiCategory.label
+            drawRoundRect(canvas, tool.rect,
+                if (selectedCategory) colorControlBgPressed else palette.candidateBar, cornerRadius)
+            paintToolbar.textSize = dp(if (mode == Mode.EMOJI) 13f else 15f) * layoutHeightScale
+            val textWidth = paintToolbar.measureText(tool.label)
+            val availableWidth = (tool.rect.width() - dp(4f)).coerceAtLeast(1f)
+            if (textWidth > availableWidth) paintToolbar.textSize *= availableWidth / textWidth
             val cy = tool.rect.centerY() - (paintToolbar.ascent() + paintToolbar.descent()) / 2
             canvas.drawText(tool.label, tool.rect.centerX(), cy, paintToolbar)
         }
@@ -802,6 +831,13 @@ class ZhuyinKeyboardView @JvmOverloads constructor(
                 }
                 drawRoundRect(canvas, cell.rect, bg, dp(metrics.candidateCornerRadius))
                 paintCandidateText.typeface = KeyboardFont.choose(candidates[cell.candidateIndex], customTypeface, Typeface.DEFAULT)
+                paintCandidateText.textSize = min(dp(metrics.candidateFontSize), candidateBarHeight * 0.8f)
+                val textFit = minOf(1f,
+                    (cell.rect.width() - dp(8f)).coerceAtLeast(1f) /
+                        paintCandidateText.measureText(candidates[cell.candidateIndex]).coerceAtLeast(1f),
+                    (cell.rect.height() - dp(4f)).coerceAtLeast(1f) /
+                        (paintCandidateText.descent() - paintCandidateText.ascent()).coerceAtLeast(1f))
+                paintCandidateText.textSize *= textFit
                 val cy = cell.rect.centerY() -
                     (paintCandidateText.ascent() + paintCandidateText.descent()) / 2
                 canvas.drawText(
@@ -844,17 +880,32 @@ class ZhuyinKeyboardView @JvmOverloads constructor(
             canvas.drawRoundRect(k.rect, cornerRadius, cornerRadius, paintRoundRect)
             paintRoundRect.style = Paint.Style.FILL
 
-            val labelPaint = if (k.label in setOf("#+=", "123")) {
-                paintControlText
-            } else {
-                paintKeyText
+            val isZhuyin = mode == Mode.ZHUYIN && k.label.all { it in 'ㄅ'..'ㄩ' || it in TONE_CHARS }
+            val labelPaint = when {
+                isZhuyin -> paintZhuyinText.apply {
+                    textSize = dp(metrics.zhuyinFontSize)
+                }
+                k.label in setOf("#+=", "123") -> paintControlText
+                else -> paintKeyText
             }
             labelPaint.color = colorKeyText
-            labelPaint.typeface = KeyboardFont.choose(k.label, customTypeface,
-                if (k.label.all { it in 'ㄅ'..'ㄩ' || it in TONE_CHARS }) bopomofoTypeface else Typeface.DEFAULT)
-            val cy = k.rect.centerY() - (labelPaint.ascent() + labelPaint.descent()) / 2
+            labelPaint.typeface = if (mode == Mode.EMOJI) Typeface.DEFAULT else
+                KeyboardFont.choose(k.label, customTypeface, if (isZhuyin) bopomofoTypeface else Typeface.DEFAULT)
+            if (isZhuyin) {
+                // Fit the visible glyph, not its full-width advance / line spacing.
+                // Otherwise narrow phone keys cap the slider near its default size.
+                labelPaint.getTextBounds(k.label, 0, k.label.length, zhuyinGlyphBounds)
+                val fit = minOf(1f,
+                    (k.rect.width() - dp(4f)).coerceAtLeast(1f) / zhuyinGlyphBounds.width().coerceAtLeast(1),
+                    (k.rect.height() - dp(4f)).coerceAtLeast(1f) / zhuyinGlyphBounds.height().coerceAtLeast(1))
+                labelPaint.textSize *= fit
+                labelPaint.getTextBounds(k.label, 0, k.label.length, zhuyinGlyphBounds)
+            }
+            val cx = if (isZhuyin) k.rect.centerX() - zhuyinGlyphBounds.exactCenterX() else k.rect.centerX()
+            val cy = k.rect.centerY() - if (isZhuyin) zhuyinGlyphBounds.exactCenterY()
+                else (labelPaint.ascent() + labelPaint.descent()) / 2
             if (k.label.isNotEmpty()) {
-                canvas.drawText(k.label, k.rect.centerX(), cy, labelPaint)
+                canvas.drawText(k.label, cx, cy, labelPaint)
             }
 
         }
@@ -946,6 +997,8 @@ class ZhuyinKeyboardView @JvmOverloads constructor(
         val pointerId: Int,
         val downX: Float,
         val downY: Float,
+        var lastX: Float = downX,
+        var lastY: Float = downY,
         var target: TouchTarget?,
         var trackingSpace: Boolean,
         var hapticArmed: Boolean,
@@ -1010,6 +1063,11 @@ class ZhuyinKeyboardView @JvmOverloads constructor(
             MotionEvent.ACTION_POINTER_DOWN -> {
                 if (event.actionMasked == MotionEvent.ACTION_DOWN) cancelAllContacts()
                 val index = event.actionIndex
+                // POINTER_DOWN also carries the latest positions of fingers already held.
+                // Use them even when Android has coalesced the preceding MOVE event.
+                for (held in 0 until event.pointerCount) {
+                    if (held != index) moveContact(event.getPointerId(held), event.getX(held), event.getY(held))
+                }
                 return beginContact(event.getPointerId(index), event.getX(index), event.getY(index))
             }
             MotionEvent.ACTION_MOVE -> {
@@ -1035,6 +1093,39 @@ class ZhuyinKeyboardView @JvmOverloads constructor(
     }
 
     private fun beginContact(pointerId: Int, x: Float, y: Float): Boolean {
+        // A rolling space/first-tone tap can change the page. Resolve it before
+        // hit-testing the new finger so its saved label belongs to the new page.
+        val previousSpace = contacts.values.firstOrNull { existing ->
+            existing.pointerId != pointerId && existing.trackingSpace && !existing.resolved &&
+                spaceCursorGesture.ownsTouch
+        }
+        if (previousSpace != null) {
+            val tap = spaceCursorGesture.release()
+            previousSpace.trackingSpace = false
+            previousSpace.resolved = true
+            previousSpace.target = null
+            if (tap) {
+                commitContact(previousSpace) {
+                    onSpace?.invoke()
+                    performClick()
+                }
+            }
+        }
+        // The next key-down completes the preceding letter's tap. Resolve it
+        // before hit-testing again: its callback may switch the Zhuyin page.
+        // Releasing either finger afterwards must never re-submit that letter.
+        val nextTarget = findTarget(x, y)
+        if (nextTarget is TouchTarget.ZhuyinKey || nextTarget is TouchTarget.ControlKey) {
+            val pending = contacts.values.filter {
+                !it.resolved && it.target is TouchTarget.ZhuyinKey && !it.backspaceEngaged
+            }
+            for (previous in pending) {
+                val target = previewTarget(previous, previous.lastX, previous.lastY)
+                previous.resolved = true
+                if (target != null) fire(previous, target)
+                previous.target = null
+            }
+        }
         val landed = findTarget(x, y)
         val contact = landed?.let { target ->
             Contact(
@@ -1061,22 +1152,6 @@ class ZhuyinKeyboardView @JvmOverloads constructor(
                 applyHighlight(target)
             }
         }
-        val previousSpace = contacts.values.firstOrNull { existing ->
-            existing.pointerId != pointerId && existing.trackingSpace && !existing.resolved &&
-                spaceCursorGesture.ownsTouch
-        }
-        if (previousSpace != null) {
-            val tap = spaceCursorGesture.release()
-            previousSpace.trackingSpace = false
-            previousSpace.resolved = true
-            previousSpace.target = null
-            if (tap) {
-                commitContact(previousSpace) {
-                    onSpace?.invoke()
-                    performClick()
-                }
-            }
-        }
         contact?.let { created ->
             if (created.trackingSpace) spaceCursorGesture.press(x, y)
             if (isBackspaceTarget(created.target)) {
@@ -1091,6 +1166,8 @@ class ZhuyinKeyboardView @JvmOverloads constructor(
     private fun moveContact(pointerId: Int, x: Float, y: Float) {
         val contact = contacts[pointerId] ?: return
         if (contact.resolved) return
+        contact.lastX = x
+        contact.lastY = y
         if (contact.trackingSpace && spaceCursorGesture.ownsTouch) {
             spaceCursorGesture.move(x, y)
             return
@@ -1199,26 +1276,45 @@ class ZhuyinKeyboardView @JvmOverloads constructor(
         return true
     }
 
+    private fun insideTouchBounds(x: Float, y: Float): Boolean =
+        x >= 0f && x < width && y >= 0f && y < height - systemBottomInset
+
     private fun findTarget(x: Float, y: Float): TouchTarget? {
+        if (!insideTouchBounds(x, y)) return null
         toolKeys.firstOrNull { it.rect.contains(x, y) }?.let { return TouchTarget.Tool(it.label) }
-        if (candidateBarRect.height() > 0 && candidateBarRect.contains(x, y)) {
-            if (candidateToggleRect.contains(x, y)) {
+        // The separator below a collapsed candidate row belongs to that row.
+        // Stop exactly at the first drawn key: never steal a real letter tap.
+        val candidateTouchBottom = if (candidateExpanded) candidateBarRect.bottom else
+            zhuyinKeys.minOfOrNull { it.rect.top } ?: candidateBarRect.bottom
+        if (candidateBarRect.height() > 0 && y >= candidateBarRect.top && y < candidateTouchBottom) {
+            val candidateY = y.coerceAtMost(candidateBarRect.bottom - 0.01f)
+            if (candidateToggleRect.contains(x, candidateY)) {
                 return TouchTarget.MorePage
             }
             candidateCells.firstOrNull { cell ->
-                RectF.intersects(candidateBarRect, cell.rect) && cell.rect.contains(x, y)
+                RectF.intersects(candidateBarRect, cell.rect) && cell.rect.contains(x, candidateY)
             }?.let { return TouchTarget.Candidate(it.candidateIndex) }
+            // A narrow divider belongs to its nearest visible card. Large blank
+            // panel areas stay scroll-only, and the expand button has precedence.
+            val gapSlop = dp(maxOf(metrics.candidateGap / 2f, metrics.candidateInnerPadding))
+            val nearest = KeyboardHitTesting.nearestExpandedIndex(
+                x, candidateY, candidateHitBoxes, gapSlop, gapSlop)
+            if (nearest >= 0) return TouchTarget.Candidate(candidateCells[nearest].candidateIndex)
             return TouchTarget.CandidatePanel
         }
-        // A touch inside a drawn control stays there. Aim correction applies to the
-        // gaps and key grid, where the contact centroid sits below the fingertip.
+        // The drawn key is authoritative, including its top edge. A global aim
+        // offset must never turn a backspace tap into a letter in the row above.
         for ((index, key) in controlKeys.withIndex()) {
             if (key.rect.contains(x, y)) return TouchTarget.ControlKey(index, key.action)
         }
-        val biasedY = y - dp(KeyboardTouchPolicy.TOUCH_AIM_OFFSET_UP_DP)
+        for ((index, key) in zhuyinKeys.withIndex()) {
+            if (key.rect.contains(x, y)) {
+                return if (key.label.isEmpty()) null else TouchTarget.ZhuyinKey(index, key.label)
+            }
+        }
         val controlIndex = KeyboardHitTesting.nearestExpandedIndex(
             x = x,
-            y = biasedY,
+            y = y,
             boxes = controlHitBoxes,
             horizontalSlop = 0f,
             verticalSlop = 0f
@@ -1226,14 +1322,11 @@ class ZhuyinKeyboardView @JvmOverloads constructor(
         if (controlIndex >= 0) {
             return TouchTarget.ControlKey(controlIndex, controlKeys[controlIndex].action)
         }
-        val keyFloor = keyHitBoxes.minOfOrNull { it.top } ?: biasedY
-        val keyIndex = KeyboardHitTesting.nearestExpandedIndex(
-            x = x,
-            y = biasedY.coerceAtLeast(keyFloor),
-            boxes = keyHitBoxes,
-            horizontalSlop = 0f,
-            verticalSlop = 0f
-        )
+        // Keep the existing outer boundary and disabled-slot exclusions. Within
+        // that region, use distance to the visible keys rather than expanded row
+        // centers, so a staggered-row corner can belong to the key just below it.
+        if (KeyboardHitTesting.nearestExpandedIndex(x, y, keyHitBoxes, 0f, 0f) < 0) return null
+        val keyIndex = KeyboardHitTesting.nearestVisibleIndex(x, y, keyVisualBoxes)
         if (keyIndex >= 0) {
             val key = zhuyinKeys[keyIndex]
             return TouchTarget.ZhuyinKey(keyIndex, key.label)
@@ -1242,6 +1335,7 @@ class ZhuyinKeyboardView @JvmOverloads constructor(
     }
 
     private fun releaseDecision(contact: Contact, x: Float, y: Float): KeyboardTouchPolicy.KeyRelease {
+        if (!insideTouchBounds(x, y)) return KeyboardTouchPolicy.KeyRelease.CANCEL
         val under = findTarget(x, y)
         return KeyboardTouchPolicy.keyRelease(
             downX = contact.downX,
@@ -1322,7 +1416,14 @@ class ZhuyinKeyboardView @JvmOverloads constructor(
 
     private fun handleTarget(t: TouchTarget) {
         when (t) {
-            is TouchTarget.Tool -> when (t.label) {
+            is TouchTarget.Tool -> if (mode == Mode.EMOJI) {
+                val category = EmojiCatalog.categories.indexOfFirst { it.label == t.label }
+                if (category >= 0) {
+                    emojiCategory = category
+                    emojiPage = 0
+                    refresh()
+                }
+            } else when (t.label) {
                 "全形", "半形" -> onWidthToggle?.invoke()
                 "😊", "返回" -> onEmoji?.invoke()
                 "剪貼簿" -> onPaste?.invoke()
@@ -1338,6 +1439,9 @@ class ZhuyinKeyboardView @JvmOverloads constructor(
             is TouchTarget.CandidatePanel -> {}
             is TouchTarget.ControlKey -> {
                 when (t.action) {
+                    ControlAction.EMOJI_RETURN -> onEmoji?.invoke()
+                    ControlAction.EMOJI_PREVIOUS -> changeEmojiPage(-1)
+                    ControlAction.EMOJI_NEXT -> changeEmojiPage(1)
                     ControlAction.SPACE -> onSpace?.invoke()
                     ControlAction.RETURN -> onReturn?.invoke()
                     ControlAction.ENGLISH -> onEnglishMode?.invoke()
@@ -1396,6 +1500,13 @@ class ZhuyinKeyboardView @JvmOverloads constructor(
         is TouchTarget.ControlKey -> target.action == ControlAction.BACKSPACE
         is TouchTarget.ZhuyinKey -> target.label == "⌫"
         else -> false
+    }
+
+    private fun changeEmojiPage(delta: Int) {
+        if (mode != Mode.EMOJI) return
+        val pages = currentEmojiCategory.pageCount
+        emojiPage = (emojiPage + delta + pages) % pages
+        refresh()
     }
 
     private fun dp(px: Float): Float = px * resources.displayMetrics.density

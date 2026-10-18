@@ -46,15 +46,18 @@ class KeyboardToolsDeviceTest {
             view.setMode(ZhuyinKeyboardView.Mode.HALF_WIDTH_NUMBER)
             tap(view, "?"); tap(view, "!")
             view.setMode(ZhuyinKeyboardView.Mode.EMOJI)
-            tap(view, "😀"); tap(view, "❤️")
+            tap(view, "😀")
+            tap(view, "符號", "toolKeys")
+            tap(view, "❤️")
             assertEquals("「」『』【】?!😀❤️", typed.toString())
             var width = 0; var emoji = 0; var paste = 0; var settings = 0
             view.onWidthToggle = { width++ }
-            view.onEmoji = { emoji++ }
+            view.onEmoji = { emoji++; view.setMode(ZhuyinKeyboardView.Mode.ZHUYIN) }
             view.onPaste = { paste++ }
             view.onSettings = { settings++ }
-            for (label in listOf("全形", "返回", "剪貼簿", "設定")) tap(view, label, "toolKeys")
-            assertEquals(listOf(1, 1, 1, 1), listOf(width, emoji, paste, settings))
+            tap(view, "返回", "controlKeys")
+            for (label in listOf("全形", "😊", "剪貼簿", "設定")) tap(view, label, "toolKeys")
+            assertEquals(listOf(1, 2, 1, 1), listOf(width, emoji, paste, settings))
             assertTrue(keys(view, "toolKeys").all { it.second.top >= view.keyboardContentTop })
         }
     }
@@ -65,7 +68,7 @@ class KeyboardToolsDeviceTest {
             view.layout(0, 0, 1080, 2200)
             val initialKeys = keys(view, "zhuyinKeys")
             val initialTop = view.keyboardContentTop
-            assertEquals(listOf("全形", "😊", "剪貼簿", "設定"), keys(view, "toolKeys").map { it.first })
+            assertEquals(listOf("全形", "😊", "剪貼簿", "編輯", "設定"), keys(view, "toolKeys").map { it.first })
             for ((words, composing) in listOf(listOf("我", "握") to true,
                 emptyList<String>() to true, listOf("想", "是", "要", "的") to false)) {
                 view.updateCandidateState(words, 0, -1, false, false, composing)
@@ -76,15 +79,15 @@ class KeyboardToolsDeviceTest {
             }
             view.updateCandidateState(emptyList(), 0, -1, false, false)
             view.refresh()
-            assertEquals(4, keys(view, "toolKeys").size)
+            assertEquals(5, keys(view, "toolKeys").size)
             assertEquals(initialKeys, keys(view, "zhuyinKeys"))
         }
     }
 
-    @Test fun firstBackspaceDismissesPredictionAndConsumesHoldUntilRelease() {
+    @Test fun firstBackspaceDismissesPredictionAndDeletesImmediately() {
         instrumentation.runOnMainSync {
-            // Exercise the IME's actual down/up handlers without attaching an editor:
-            // dismissing suggestions must not require an InputConnection at all.
+            // Exercise the actual handlers with a deletion spy; predictions must
+            // not consume the first deletion or suppress the held repeat.
             val ime = IOSZhuyinIME()
             val view = ZhuyinKeyboardView(instrumentation.targetContext)
             view.layout(0, 0, 1080, 2200)
@@ -96,19 +99,26 @@ class KeyboardToolsDeviceTest {
             field("allCandidates").set(ime, listOf("想"))
             field("lastCommittedWord").set(ime, "我")
             call("syncKeyboardView")
-            val repeater = field("backspaceRepeater").get(ime)
-            val held = repeater.javaClass.getDeclaredField("held").apply { isAccessible = true }
+            var deletions = 0
+            val scheduled = mutableListOf<Runnable>()
+            val repeater = BackspaceRepeater(
+                deleteOnce = { deletions++ },
+                schedule = { task, _ -> scheduled += task },
+                cancel = { scheduled.remove(it) }
+            )
+            field("backspaceRepeater").set(ime, repeater)
             try {
                 call("handleBackspaceDown")
                 assertFalse(field("showingNextWordSuggestions").getBoolean(ime))
                 assertTrue((field("allCandidates").get(ime) as List<*>).isEmpty())
-                assertEquals(4, keys(view, "toolKeys").size)
-                assertFalse(held.getBoolean(repeater))
-                call("handleBackspaceDown") // Physical-key repeat from the same contact.
-                assertFalse(held.getBoolean(repeater))
+                assertEquals(5, keys(view, "toolKeys").size)
+                assertEquals(1, deletions)
+                scheduled.removeAt(0).run()
+                assertEquals(2, deletions)
                 call("handleBackspaceUp")
+                assertTrue(scheduled.isEmpty())
                 call("handleBackspaceDown")
-                assertTrue(held.getBoolean(repeater))
+                assertEquals(3, deletions)
             } finally { call("handleBackspaceUp") }
         }
     }
@@ -138,7 +148,7 @@ class KeyboardToolsDeviceTest {
         try {
             instrumentation.runOnMainSync {
                 val views = descendants(activity.window.decorView)
-                views.filterIsInstance<Button>().single { it.text == "鍵盤高度與外觀" }.performClick()
+                views.filterIsInstance<Button>().single { it.text == "字體大小、鍵盤高度與外觀" }.performClick()
                 val label = views.filterIsInstance<TextView>().single { it.text.startsWith("按鍵高度:") }
                 val slider = (label.parent as ViewGroup).getChildAt(1) as SeekBar
                 assertEquals(View.VISIBLE, (label.parent.parent as View).visibility)
@@ -154,6 +164,19 @@ class KeyboardToolsDeviceTest {
                 val ios = keys(keyboard, "zhuyinKeys").first().second.height()
                 assertEquals("按鍵高度: 47.0", label.text.toString())
                 assertTrue(ios > pixel)
+                val sizeLabel = views.filterIsInstance<TextView>().single { it.text.startsWith("注音字大小:") }
+                val sizeSlider = (sizeLabel.parent as ViewGroup).getChildAt(1) as SeekBar
+                assertEquals("注音字大小: 28.0", sizeLabel.text.toString())
+                sizeSlider.layout(0, 0, 600, 80)
+                val now = SystemClock.uptimeMillis()
+                for (action in listOf(MotionEvent.ACTION_DOWN, MotionEvent.ACTION_UP)) {
+                    val event = MotionEvent.obtain(now, now + 20, action, 570f, 40f, 0)
+                    try { sizeSlider.onTouchEvent(event) } finally { event.recycle() }
+                }
+                assertTrue(KeyboardMetrics.current(context).zhuyinFontSize > 28f)
+                assertFalse(sizeLabel.text.toString() == "注音字大小: 28.0")
+                views.filterIsInstance<Button>().single { it.text == "iOS 預設" }.performClick()
+                assertEquals("注音字大小: 28.0", sizeLabel.text.toString())
                 val bottomBefore = keys(keyboard, "controlKeys").first().second.bottom
                 prefs.edit().putFloat(KeyboardMetrics.KEY_BOTTOM_PADDING, 30f).commit()
                 keyboard.refresh()

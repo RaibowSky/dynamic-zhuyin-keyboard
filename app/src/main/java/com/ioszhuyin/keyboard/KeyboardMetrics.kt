@@ -21,6 +21,7 @@ data class KeyboardLayoutMetrics(
     val compositionBarHeight: Float,
     val cornerRadius: Float,
     val keyFontSize: Float,
+    val zhuyinFontSize: Float,
     val controlFontSize: Float,
     val compositionFontSize: Float,
     val candidateFontSize: Float,
@@ -60,13 +61,14 @@ object KeyboardMetrics {
         functionKeyWidth = 1.3f,
         spacebarWidthRatio = 4.4f,
         returnKeyWidthRatio = 1.3f,
-        candidateBarHeight = 40f,
+        candidateBarHeight = 52f,
         compositionBarHeight = 40f,
         cornerRadius = 5f,
         keyFontSize = 28f,
+        zhuyinFontSize = 28f,
         controlFontSize = 20f,
         compositionFontSize = 20f,
-        candidateFontSize = 17f,
+        candidateFontSize = 22f,
         toneFontSize = 24f,
         hintFontSize = 9f,
         keyStrokeWidth = 0.5f,
@@ -98,13 +100,14 @@ object KeyboardMetrics {
         functionKeyWidth = 1.15f,
         spacebarWidthRatio = 4.6f,
         returnKeyWidthRatio = 1.55f,
-        candidateBarHeight = 40f,
+        candidateBarHeight = 52f,
         compositionBarHeight = 40f,
         cornerRadius = 5f,
         keyFontSize = 28f,
+        zhuyinFontSize = 28f,
         controlFontSize = 20f,
         compositionFontSize = 20f,
-        candidateFontSize = 17f,
+        candidateFontSize = 22f,
         toneFontSize = 24f,
         hintFontSize = 9f,
         keyStrokeWidth = 0.5f,
@@ -150,6 +153,8 @@ object KeyboardMetrics {
             compositionBarHeight = prefs.getFloat(KEY_COMPOSITION_BAR_HEIGHT, preset.compositionBarHeight),
             cornerRadius = prefs.getFloat(KEY_CORNER_RADIUS, preset.cornerRadius),
             keyFontSize = prefs.getFloat(KEY_KEY_FONT_SIZE, preset.keyFontSize),
+            zhuyinFontSize = prefs.getFloat(KEY_ZHUYIN_FONT_SIZE,
+                prefs.getFloat(KEY_KEY_FONT_SIZE, preset.zhuyinFontSize)).coerceIn(16f, 40f),
             controlFontSize = prefs.getFloat(KEY_CONTROL_FONT_SIZE, preset.controlFontSize),
             compositionFontSize = prefs.getFloat(KEY_COMPOSITION_FONT_SIZE, preset.compositionFontSize),
             candidateFontSize = prefs.getFloat(KEY_CANDIDATE_FONT_SIZE, preset.candidateFontSize),
@@ -192,6 +197,7 @@ object KeyboardMetrics {
             .putFloat(KEY_COMPOSITION_BAR_HEIGHT, preset.compositionBarHeight)
             .putFloat(KEY_CORNER_RADIUS, preset.cornerRadius)
             .putFloat(KEY_KEY_FONT_SIZE, preset.keyFontSize)
+            .putFloat(KEY_ZHUYIN_FONT_SIZE, preset.zhuyinFontSize)
             .putFloat(KEY_CONTROL_FONT_SIZE, preset.controlFontSize)
             .putFloat(KEY_COMPOSITION_FONT_SIZE, preset.compositionFontSize)
             .putFloat(KEY_CANDIDATE_FONT_SIZE, preset.candidateFontSize)
@@ -235,6 +241,7 @@ object KeyboardMetrics {
     const val KEY_COMPOSITION_BAR_HEIGHT = "keyboard_metric_composition_bar_height"
     const val KEY_CORNER_RADIUS = "keyboard_metric_corner_radius"
     const val KEY_KEY_FONT_SIZE = "keyboard_metric_key_font_size"
+    const val KEY_ZHUYIN_FONT_SIZE = "keyboard_metric_zhuyin_font_size"
     const val KEY_CONTROL_FONT_SIZE = "keyboard_metric_control_font_size"
     const val KEY_COMPOSITION_FONT_SIZE = "keyboard_metric_composition_font_size"
     const val KEY_CANDIDATE_FONT_SIZE = "keyboard_metric_candidate_font_size"
