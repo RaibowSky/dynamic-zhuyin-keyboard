@@ -284,6 +284,8 @@ def main() -> None:
     generated_asset_sha256 = hashlib.sha256(target.read_bytes()).hexdigest()
     license_file.write_text(
         "Source: CC-CEDICT from MDBG Chinese Dictionary\n"
+        "CC-CEDICT: Community maintained free Chinese-English dictionary, published by MDBG.\n"
+        "Referenced works: CEDICT - Copyright (C) 1997, 1998 Paul Andrew Denisowski\n"
         f"Download: {CC_CEDICT_SOURCE_URL}\n"
         f"Retrieved: {CC_CEDICT_RETRIEVED_DATE}\n"
         f"SHA-256: {CC_CEDICT_ARCHIVE_SHA256}\n"

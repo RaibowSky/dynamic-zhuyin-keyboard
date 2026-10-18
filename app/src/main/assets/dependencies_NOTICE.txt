@@ -1,0 +1,53 @@
+Third-party libraries compiled into the app
+===========================================
+
+All libraries below are licensed under the Apache License, Version 2.0; the
+full text is bundled as apache_LICENSE-2.0.txt. Versions are those resolved for
+the release build.
+
+AndroidX (Copyright The Android Open Source Project)
+  activity 1.8.0, annotation 1.3.0, annotation-experimental 1.3.0,
+  appcompat 1.6.1, appcompat-resources 1.6.1, arch core-common 2.2.0,
+  arch core-runtime 2.2.0, cardview 1.0.0, collection 1.1.0,
+  concurrent-futures 1.1.0, constraintlayout 2.1.4,
+  constraintlayout-core 1.0.4, coordinatorlayout 1.1.0, core 1.9.0,
+  core-ktx 1.9.0, cursoradapter 1.0.0, customview 1.1.0, documentfile 1.0.0,
+  drawerlayout 1.1.1, dynamicanimation 1.0.0, emoji2 1.2.0,
+  emoji2-views-helper 1.2.0, fragment 1.3.6, interpolator 1.0.0,
+  legacy-support-core-utils 1.0.0, lifecycle 2.6.1 (common, livedata,
+  livedata-core, process, runtime, viewmodel, viewmodel-savedstate),
+  loader 1.0.0, localbroadcastmanager 1.0.0, print 1.0.0,
+  profileinstaller 1.3.0, recyclerview 1.1.0,
+  resourceinspection-annotation 1.0.1, savedstate 1.2.1,
+  startup-runtime 1.1.1, tracing 1.0.0, transition 1.2.0,
+  vectordrawable 1.1.0, vectordrawable-animated 1.1.0,
+  versionedparcelable 1.1.1, viewpager 1.0.0, viewpager2 1.0.0
+  https://developer.android.com/jetpack/androidx
+
+Material Components for Android 1.11.0 (Copyright Google LLC)
+  https://github.com/material-components/material-components-android
+
+Kotlin Standard Library 1.9.0 (kotlin-stdlib, -common, -jdk7, -jdk8)
+  https://github.com/JetBrains/kotlin
+  NOTICE (license/NOTICE.txt at v1.9.0):
+    Kotlin Compiler
+    Copyright 2010-2023 JetBrains s.r.o and respective authors and developers
+  Upstream license/README.md also lists standard-library code derived from
+  GWT, (C) 2007-08 Google Inc. (Apache 2.0), Guava's UnsignedLongs,
+  (C) 2011 The Guava Authors (Apache 2.0), and Boost special math functions,
+  Copyright Eric Ford & Hubert Holin 2001 (Boost Software License 1.0).
+
+kotlinx.coroutines 1.6.4 (core, core-jvm, android)
+  https://github.com/Kotlin/kotlinx.coroutines
+  NOTICE (license/NOTICE.txt at 1.6.4):
+    kotlinx.coroutines library.
+    Copyright 2016-2021 JetBrains s.r.o and respective authors and developers
+
+JetBrains Java Annotations 13.0 (Copyright JetBrains s.r.o.)
+  https://github.com/JetBrains/java-annotations
+
+Error Prone annotations 2.15.0 (Copyright The Error Prone Authors)
+  https://github.com/google/error-prone
+
+Guava listenablefuture 1.0 (Copyright The Guava Authors)
+  https://github.com/google/guava

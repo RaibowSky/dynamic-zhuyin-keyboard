@@ -17,6 +17,8 @@ The file `app/src/main/assets/zhuyin_cedict.tsv` is generated from CC-CEDICT.
 - License: Creative Commons Attribution-ShareAlike 4.0 International
   (CC BY-SA 4.0)
 - License URL: https://creativecommons.org/licenses/by-sa/4.0/
+- Copyright notice retained from the source header:
+  Referenced works: CEDICT - Copyright (C) 1997, 1998 Paul Andrew Denisowski
 - Local conversion script: `tools/build_zhuyin_dictionary.py`
 - Bundled asset SHA-256: `df1664881c7417be73d430ee90915ba13d70aa67f19632a70d170bdeefb5ead9`
 
@@ -64,10 +66,20 @@ aggregate phrase-occurrence table.
 The phrase-reading mappings add McBopomofo's curated multi-character phrases
 under toned and untoned Zhuyin keys. Exact phrase counts rank the merged
 candidates. The upstream data README notes that `BPMFMappings.txt` was
-originally simplified from libtabe's BSD-licensed `tsi.src` and subsequently
-modified. No McBopomofo application source code, raw corpus, IVS data, or
+originally simplified from libtabe's `tsi.src` and subsequently modified.
+libtabe's BSD-style notices (TaBE Project, Pai-Hsiang Hsiao, and the Computer
+Systems and Communication Lab, Institute of Information Science, Academia
+Sinica), including the advertising acknowledgements of the 0.2.5 license, are
+reproduced in `app/src/main/assets/libtabe_LICENSE.txt`.
+No McBopomofo application source code, raw corpus, IVS data, or
 runtime source file is packaged. The generated asset carries attribution in
 `app/src/main/assets/zhuyin_cedict_LICENSE.txt`.
+
+`app/src/main/assets/next_word.tsv` (next-word suggestions) is derived from the
+same `phrase.occ` by `tools/build_next_word_table.py`: every phrase contributes
+its continuation to its short prefixes, and the most frequent continuations are
+kept. It is covered by the MIT notice above, which is also bundled in
+`zhuyin_cedict_LICENSE.txt`.
 
 ### ToneOZ Pinyin WenKai Bopomofo subset
 
@@ -94,9 +106,25 @@ The font software was modified only by subsetting; the retained glyph outlines
 were not modified. The bundled subset SHA-256 is
 `7d2630c930012253c214100dae4fdccef582ed02be6bcbc313bed831ad672800`.
 
+### Libraries compiled into the app
+
+The app is built with AndroidX, Material Components for Android, the Kotlin
+standard library, kotlinx.coroutines and a few annotation libraries, all under
+the Apache License 2.0. `app/src/main/assets/dependencies_NOTICE.txt` lists the
+release-build versions and reproduces the upstream Kotlin and kotlinx.coroutines
+NOTICE files; `app/src/main/assets/apache_LICENSE-2.0.txt` is a copy of the
+repository `LICENSE`. Both are shown on the in-app 開放原始碼授權 page. Update
+the list when dependencies change
+(`gradlew :app:dependencies --configuration githubReleaseRuntimeClasspath`).
+
 ## Non-Bundled References
 
 This project was implemented independently.
+
+This project is not affiliated with, endorsed by, or sponsored by Apple Inc.
+"iOS" in the repository name, package name and class names describes the
+keyboard behavior that inspired the design. No Apple source code, artwork,
+sounds, or other assets are included.
 
 During development, publicly available Chinese input methods and linguistic
 resources were consulted to understand general input workflows, keyboard

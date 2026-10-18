@@ -1,5 +1,10 @@
 # Changelog
 
+## Unreleased
+
+- Add an in-app 「開放原始碼授權」 page showing the app license, the Apple non-affiliation notice and every bundled third-party notice.
+- Bundle libtabe's license and acknowledgements (`libtabe_LICENSE.txt`), keep the CC-CEDICT/CEDICT copyright line in the dictionary notice, and document `next_word.tsv` and the Apple disclaimer in NOTICE.
+
 ## 1.3.0 (2026-10-18)
 
 - Register taps more reliably: a short finger roll keeps the pressed key, overlapping fingers are tracked separately, and gaps between keys, staggered-row margins and the strip below the candidate row belong to the nearest key or candidate. Haptics fire when the finger lands.
