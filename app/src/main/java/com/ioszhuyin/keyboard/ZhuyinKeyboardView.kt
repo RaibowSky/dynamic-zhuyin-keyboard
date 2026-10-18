@@ -1407,11 +1407,7 @@ class ZhuyinKeyboardView @JvmOverloads constructor(
                 AudioManager.FX_KEYPRESS_RETURN
             else -> AudioManager.FX_KEYPRESS_STANDARD
         }
-        try {
-            val audio = context.getSystemService(Context.AUDIO_SERVICE) as? AudioManager ?: return
-            audio.playSoundEffect(effect)
-        } catch (_: RuntimeException) {
-        }
+        KeyboardSound.play(context, effect)
     }
 
     private fun handleTarget(t: TouchTarget) {

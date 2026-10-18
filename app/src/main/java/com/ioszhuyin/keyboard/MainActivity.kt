@@ -734,6 +734,54 @@ class MainActivity : AppCompatActivity() {
             addView(metricSlider("空白鍵寬度比例", KeyboardMetrics.KEY_SPACEBAR_RATIO, 2.5f, 7f))
             addView(metricSlider("候選列高度", KeyboardMetrics.KEY_CANDIDATE_BAR_HEIGHT, 24f, 64f))
             addView(metricSlider("候選字大小", KeyboardMetrics.KEY_CANDIDATE_FONT_SIZE, 14f, 28f))
+            addView(keySoundSettings())
+        }
+    }
+
+    private fun keySoundSettings(): LinearLayout {
+        val volumeLabel = TextView(this).apply {
+            setTextColor(palette.status)
+            textSize = 13f
+            text = "按鍵音音量: ${KeyboardSound.volume(this@MainActivity)}"
+        }
+        val volume = SeekBar(this).apply {
+            max = 100
+            progress = KeyboardSound.volume(this@MainActivity)
+            isEnabled = KeyboardSound.enabled(this@MainActivity)
+            setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
+                override fun onProgressChanged(seekBar: SeekBar?, progress: Int, fromUser: Boolean) {
+                    if (!fromUser) return
+                    KeyboardSound.setVolume(this@MainActivity, progress)
+                    volumeLabel.text = "按鍵音音量: $progress"
+                }
+                override fun onStartTrackingTouch(seekBar: SeekBar?) {}
+                override fun onStopTrackingTouch(seekBar: SeekBar?) {
+                    KeyboardSound.play(this@MainActivity, android.media.AudioManager.FX_KEYPRESS_STANDARD)
+                }
+            })
+        }
+        return LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            addView(sectionTitle("按鍵音"))
+            addView(android.widget.Switch(this@MainActivity).apply {
+                text = "按鍵時播放聲音"
+                setTextColor(palette.title)
+                isChecked = KeyboardSound.enabled(this@MainActivity)
+                setOnCheckedChangeListener { _, checked ->
+                    KeyboardSound.setEnabled(this@MainActivity, checked)
+                    volume.isEnabled = checked
+                    if (checked) {
+                        KeyboardSound.play(this@MainActivity, android.media.AudioManager.FX_KEYPRESS_STANDARD)
+                    }
+                }
+            })
+            addView(TextView(this@MainActivity).apply {
+                text = "獨立於系統「觸控音效」設定。手機在靜音或震動模式時不會發出聲音。"
+                setTextColor(palette.status)
+                textSize = 12f
+            })
+            addView(volumeLabel)
+            addView(volume)
         }
     }
 
