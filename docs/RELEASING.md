@@ -20,6 +20,9 @@ The Kotlin/resource namespace remains `com.ioszhuyin.keyboard` for both; it is
 independent of the installation ID. The fully qualified settings activity remains
 `com.ioszhuyin.keyboard.MainActivity`.
 
+Debug builds append `.debug` to either ID and are labeled 動態注音鍵盤（測試版）, so they
+install beside the released app with separate data and the debug key.
+
 ## Version policy
 
 The historical `v0.1.0-buildweek` debug demo contained versionName `1.0` and

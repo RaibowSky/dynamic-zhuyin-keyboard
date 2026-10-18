@@ -89,6 +89,22 @@ class DictionaryDeviceTest {
         assertEquals(raw.length, match.end)
     }
 
+    @Test fun typingPreloadPreservesCandidateOrderAndSyllableRules() {
+        val context = InstrumentationRegistry.getInstrumentation().targetContext
+        ZhuyinDictionary.initialize(context)
+        val prefixes = listOf("ㄅ", "ㄋ", "ㄓ", "ㄧ", "ㄒㄧㄢ")
+        val expected = prefixes.associateWith { ZhuyinDictionary.getPrefixCandidates(it, 18) }
+        val exact = ZhuyinDictionary.getCandidates("ㄋㄧˇ")
+        val preload = ZhuyinDictionary.preloadForTyping(context, 18)
+        assertSame(preload, ZhuyinDictionary.preloadForTyping(context, 18))
+        // Ordinary lookups remain valid while the worker fills other prefix caches.
+        assertTrue(ZhuyinDictionary.isLegalBaseSyllable("ㄅㄚ"))
+        assertFalse(ZhuyinDictionary.isLegalBaseSyllable("ㄅㄅ"))
+        assertEquals(exact, ZhuyinDictionary.getCandidates("ㄋㄧˇ"))
+        preload.get(30, java.util.concurrent.TimeUnit.SECONDS)
+        for ((prefix, candidates) in expected) assertEquals(candidates, ZhuyinDictionary.getPrefixCandidates(prefix, 18))
+    }
+
     @Test fun coldPrefixLookup() {
         val context = InstrumentationRegistry.getInstrumentation().targetContext
         ZhuyinDictionary.initialize(context)

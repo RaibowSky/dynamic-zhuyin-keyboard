@@ -2,6 +2,13 @@
 
 ## 1.3.0 (Unreleased)
 
+- Register taps more reliably: a short finger roll keeps the pressed key, overlapping fingers are tracked separately, and gaps between keys, staggered-row margins and the strip below the candidate row belong to the nearest key or candidate. Haptics fire when the finger lands.
+- Add an optional key sound with its own switch and volume, independent of the system touch-sound setting (off by default; silent and vibrate modes mute it).
+- Add an adjustable Zhuyin/tone key label size (16–40) with a live preview; the settings button is now 「字體大小、鍵盤高度與外觀」.
+- Unconverted Zhuyin can be edited: tap inside it or hold space and slide to move the caret, then insert, delete or change a tone. Moving the caret no longer selects the first candidate; leaving the reading keeps its literal text.
+- Emoji panel has seven categories with ◀/▶ paging; the spacebar shows the current page.
+- Warm up the dictionary in the background to reduce first-key latency.
+- Debug builds install as `.debug`, labeled 動態注音鍵盤（測試版）, beside the released app.
 - Add `github` and `play` distribution flavors. GitHub APKs keep `com.ioszhuyin.keyboard` and update previous GitHub releases in place; the Google Play build uses `dynamic.zhuyin.keyboard`. The two are separate apps that do not share data. Kotlin/resource namespace remains unchanged.
 
 ## 1.2.0 (2026-10-04)

@@ -278,6 +278,145 @@ class ImeBehaviorTest {
     }
 
     @Test
+    fun expandedHitsFillGapsAndScreenEdgesWithoutCoveringDisabledKeys() {
+        val boxes = listOf(
+            KeyboardHitBox(20f, 20f, 50f, 50f),
+            KeyboardHitBox(58f, 20f, 88f, 50f),
+            KeyboardHitBox(100f, 20f, 130f, 50f, enabled = false),
+            KeyboardHitBox(20f, 60f, 50f, 90f)
+        )
+        val expanded = KeyboardHitTesting.expandEnabledHits(
+            boxes = boxes,
+            rows = listOf(0, 0, 0, 1),
+            leftBound = 0f,
+            rightBound = 200f,
+            topBound = 0f,
+            bottomBound = 140f
+        )
+
+        assertEquals(0f, expanded[0].left, 0.01f)
+        assertEquals(54f, expanded[0].right, 0.01f)
+        assertEquals(54f, expanded[1].left, 0.01f)
+        assertEquals(100f, expanded[1].right, 0.01f)
+        assertEquals(100f, expanded[2].left, 0.01f)
+        assertEquals(130f, expanded[2].right, 0.01f)
+        assertFalse(expanded[2].enabled)
+        assertEquals(0f, expanded[3].left, 0.01f)
+        assertEquals(200f, expanded[3].right, 0.01f)
+        assertEquals(55f, expanded[0].bottom, 0.01f)
+        assertEquals(55f, expanded[3].top, 0.01f)
+        assertEquals(140f, expanded[3].bottom, 0.01f)
+
+        assertEquals(
+            0,
+            KeyboardHitTesting.nearestExpandedIndex(4f, 30f, expanded, 0f, 0f)
+        )
+        assertEquals(
+            1,
+            KeyboardHitTesting.nearestExpandedIndex(70f, 22f, expanded, 0f, 0f)
+        )
+        assertEquals(
+            -1,
+            KeyboardHitTesting.nearestExpandedIndex(110f, 30f, expanded, 0f, 0f)
+        )
+        assertEquals(
+            3,
+            KeyboardHitTesting.nearestExpandedIndex(180f, 100f, expanded, 0f, 0f)
+        )
+    }
+
+    @Test
+    fun emptyEmojiRowsDoNotBecomeEmojiOrBackspaceTargets() {
+        val boxes = (0 until 30).map { index ->
+            val x = (index % 10) * 100f
+            val y = (index / 10) * 60f
+            KeyboardHitBox(x, y, x + 90f, y + 50f, enabled = index == 0 || index == 29)
+        }
+        val expanded = KeyboardHitTesting.expandEnabledHits(
+            boxes, (0 until 30).map { it / 10 }, 0f, 1000f, 0f, 180f
+        )
+        for (index in 1 until 29) {
+            val box = boxes[index]
+            assertEquals("Blank emoji slot $index must not dispatch a key", -1,
+                KeyboardHitTesting.nearestExpandedIndex(
+                    (box.left + box.right) / 2f, (box.top + box.bottom) / 2f,
+                    expanded, 0f, 0f
+                ))
+        }
+        assertEquals(0, KeyboardHitTesting.nearestExpandedIndex(45f, 25f, expanded, 0f, 0f))
+        assertEquals(29, KeyboardHitTesting.nearestExpandedIndex(945f, 145f, expanded, 0f, 0f))
+    }
+
+    @Test
+    fun keyReleaseKeepsAShortRollAndCancelsASlideOffTheKeyboard() {
+        assertEquals(
+            KeyboardTouchPolicy.KeyRelease.ORIGINAL,
+            KeyboardTouchPolicy.keyRelease(
+                downX = 0f,
+                downY = 0f,
+                upX = 12f,
+                upY = 8f,
+                hadTarget = true,
+                stillOnOriginal = false,
+                fingerOnTypingKey = true,
+                holdRadiusPx = 20f
+            )
+        )
+        assertEquals(
+            KeyboardTouchPolicy.KeyRelease.UNDER_FINGER,
+            KeyboardTouchPolicy.keyRelease(
+                downX = 0f,
+                downY = 0f,
+                upX = 40f,
+                upY = 0f,
+                hadTarget = true,
+                stillOnOriginal = false,
+                fingerOnTypingKey = true,
+                holdRadiusPx = 20f
+            )
+        )
+        assertEquals(
+            KeyboardTouchPolicy.KeyRelease.ORIGINAL,
+            KeyboardTouchPolicy.keyRelease(
+                downX = 0f,
+                downY = 0f,
+                upX = 40f,
+                upY = 0f,
+                hadTarget = true,
+                stillOnOriginal = true,
+                fingerOnTypingKey = false,
+                holdRadiusPx = 20f
+            )
+        )
+        assertEquals(
+            KeyboardTouchPolicy.KeyRelease.CANCEL,
+            KeyboardTouchPolicy.keyRelease(
+                downX = 0f,
+                downY = 0f,
+                upX = 0f,
+                upY = -48f,
+                hadTarget = true,
+                stillOnOriginal = false,
+                fingerOnTypingKey = false,
+                holdRadiusPx = 20f
+            )
+        )
+        assertEquals(
+            KeyboardTouchPolicy.KeyRelease.CANCEL,
+            KeyboardTouchPolicy.keyRelease(
+                downX = 0f,
+                downY = 0f,
+                upX = 0f,
+                upY = 0f,
+                hadTarget = false,
+                stillOnOriginal = false,
+                fingerOnTypingKey = false,
+                holdRadiusPx = 20f
+            )
+        )
+    }
+
+    @Test
     fun keyboardHitTestingAssignsGapsToTheNearestEnabledKey() {
         val boxes = listOf(
             KeyboardHitBox(0f, 0f, 40f, 40f),
@@ -510,6 +649,20 @@ class ImeBehaviorTest {
                 replacementLength = 1
             )
         )
+    }
+
+    @Test
+    fun expectedCompositionTrackerDistinguishesInteriorSelectionFromCompositionEnd() {
+        val tracker = ExpectedCompositionUpdateTracker()
+        tracker.expect(cursor = 9, length = 6)
+        tracker.expect(cursor = 4, length = 6, composingEnd = 9, selectionEnd = 6)
+        assertEquals(null, tracker.consume(4, 6, 2, 8))
+        val current = tracker.consume(4, 6, 3, 9)
+        assertEquals(ExpectedCompositionMatchKind.CURRENT, current?.kind)
+        assertEquals(9, current?.composingEnd)
+        assertEquals(ExpectedCompositionMatchKind.STALE, tracker.consume(9, 9, 3, 9)?.kind)
+        tracker.expect(cursor = 5, length = 6, composingEnd = 9)
+        assertEquals(9, tracker.consume(5, 5, -1, -1)?.composingEnd)
     }
 
     @Test

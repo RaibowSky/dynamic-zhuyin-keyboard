@@ -46,6 +46,8 @@ movement while offering candidates from a bundled on-device dictionary.
   tone sandhi, and keeps the suffix when correcting the leading character.
 - Zhuyin, English, number and symbol pages; ABC / 注 switch languages within this keyboard.
 - System light/dark themes and local TTF/OTF import with preview and default reset.
+- Independently adjustable Zhuyin/tone label size (16–40) with a live preview in appearance settings; candidate text keeps its own size setting.
+- Seven emoji categories: faces, gestures, animals/nature, food, activities, travel, and symbols. Use ◀/▶ to browse pages; the spacebar displays the current page.
 - On-device candidate learning that ranks frequently used characters and words
   higher over time.
 - A user dictionary with manual entries, learning pause/clear, and import/export.
@@ -92,13 +94,15 @@ The generated APK is written to:
 app/build/outputs/apk/github/debug/app-github-debug.apk
 ```
 
+The debug APK uses a development signing key and the package `com.ioszhuyin.keyboard.debug`, labeled “動態注音鍵盤（測試版）”. It can coexist with the release app, with separate settings and dictionaries.
+
 To install directly on an Android device with USB debugging enabled:
 
 ```powershell
 .\gradlew.bat installGithubDebug
 ```
 
-After installation, open the Dynamic Zhuyin Keyboard app:
+After installation, open the test app labeled “動態注音鍵盤（測試版）”:
 
 1. Tap **Enable keyboard** and enable Dynamic Zhuyin Keyboard in Android's
    input-method settings.
@@ -116,6 +120,7 @@ Actual Android emulator screenshots:
 
 ## Roadmap and known limitations
 
+- Unconverted Zhuyin supports caret editing: tap within the reading or hold space and slide to insert, delete, or change its tone. Moving the caret does not select a candidate; leaving the reading preserves its literal text.
 - Since 1.2.0: hold-space cursor movement,
   full/half-width symbols, common emoji, an opt-in clipboard history panel with pins, and public layout controls.
   Unpinned clips (up to 50) older than one hour are removed the next time the clipboard is used; up to 50 pins survive automatic cleanup.
