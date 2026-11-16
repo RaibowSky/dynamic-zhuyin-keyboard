@@ -117,7 +117,11 @@ ZERO_INITIAL = {
     "yong": "ㄩㄥ",
 }
 
-LINE_RE = re.compile(r"^(\S+)\s+(\S+)\s+\[([^\]]+)\]\s+/.*/$")
+LINE_RE = re.compile(r"^(\S+)\s+(\S+)\s+\[([^\]]+)\]\s+(/.*/)$")
+# Definitions note Taiwan readings that differ from the headword Pinyin,
+# e.g. 和 [he2] "... (Taiwan pr. [han4])".
+TAIWAN_READING_RE = re.compile(r"Taiwan pr\. \[([^\]]+)\]")
+PINYIN_SYLLABLE_RE = re.compile(r"[A-Za-zü:]+[1-5]")
 PINYIN_RE = re.compile(r"^([a-zA-ZüÜ:êÊ]+)([0-5])$")
 
 
@@ -151,6 +155,33 @@ def convert_syllable(raw: str) -> str | None:
     if final_zhuyin is None:
         return None
     return initial_zhuyin + final_zhuyin + TONE[tone]
+
+
+def convert_reading(tokens: list[str]) -> list[str]:
+    syllables = []
+    for token in tokens:
+        converted = convert_syllable(token)
+        if converted is None:
+            return []
+        syllables.append(converted)
+    return syllables
+
+
+def taiwan_syllables(reading: str) -> list[str] | None:
+    """Split a Taiwan pr. note such as "han4" or "xia4hai2" into syllables."""
+    compact = reading.replace(" ", "")
+    tokens = PINYIN_SYLLABLE_RE.findall(compact)
+    return tokens if tokens and "".join(tokens) == compact else None
+
+
+def add_reading(
+    entries: dict[str, list[str]], syllables: list[str], word: str
+) -> tuple[str, str]:
+    toned_key = "".join(syllables)
+    untoned_key = strip_tones(toned_key)
+    append_unique(entries, toned_key, word)
+    append_unique(entries, untoned_key, word)
+    return toned_key, untoned_key
 
 
 def strip_tones(zhuyin: str) -> str:
@@ -212,6 +243,38 @@ def rank_candidates(candidates: list[str], frequencies: dict[str, int]) -> list[
     return sorted(candidates, key=lambda candidate: -frequencies.get(candidate, 0))
 
 
+def rank_key_candidates(
+    key: str,
+    candidates: list[str],
+    frequencies: dict[str, int],
+    taiwan_only: set[tuple[str, str]],
+) -> list[str]:
+    """Rank by frequency, but a Taiwan-only reading never takes the first slot.
+
+    phrase.occ counts a word across all of its readings, so a common word such
+    as 比 would otherwise outrank 必 under ㄅㄧˋ just because of a rare reading.
+    """
+    ranked = rank_candidates(candidates, frequencies)
+    if ranked and (key, ranked[0]) in taiwan_only:
+        for index, candidate in enumerate(ranked):
+            if (key, candidate) not in taiwan_only:
+                ranked.insert(0, ranked.pop(index))
+                break
+    return ranked
+
+
+def load_taiwan_readings(source: Path | None) -> set[tuple[str, str]]:
+    if source is None:
+        return set()
+    pairs = set()
+    with source.open("r", encoding="utf-8") as file:
+        for line in file:
+            key, _, word = line.rstrip("\n").partition("\t")
+            if key and word:
+                pairs.add((key, word))
+    return pairs
+
+
 def main() -> None:
     root = Path(__file__).resolve().parents[1]
     rebuild_output = root / "build" / "dictionary-rebuild"
@@ -228,6 +291,12 @@ def main() -> None:
         "--license-file",
         type=Path,
         default=None,
+    )
+    parser.add_argument(
+        "--taiwan-readings",
+        type=Path,
+        default=None,
+        help="Where to write key/word pairs that come only from Taiwan pr. notes",
     )
     args = parser.parse_args()
     if (args.target is None) != (args.license_file is None):
@@ -247,6 +316,9 @@ def main() -> None:
     entries: dict[str, list[str]] = {}
     parsed = 0
     skipped = 0
+    taiwan_readings = 0
+    regular_pairs: set[tuple[str, str]] = set()
+    taiwan_pairs: set[tuple[str, str]] = set()
     with gzip.open(source, "rt", encoding="utf-8") as f:
         for line in f:
             if not line or line.startswith("#"):
@@ -255,30 +327,39 @@ def main() -> None:
             if not match:
                 skipped += 1
                 continue
-            traditional, _simplified, pinyin = match.groups()
-            syllables = []
-            for token in pinyin.split():
-                converted = convert_syllable(token)
-                if converted is None:
-                    syllables = []
-                    break
-                syllables.append(converted)
+            traditional, _simplified, pinyin, definitions = match.groups()
+            syllables = convert_reading(pinyin.split())
             if not syllables:
                 skipped += 1
                 continue
 
-            toned_key = "".join(syllables)
-            base_key = strip_tones(toned_key)
-            append_unique(entries, toned_key, traditional)
-            append_unique(entries, base_key, traditional)
+            for key in add_reading(entries, syllables, traditional):
+                regular_pairs.add((key, traditional))
             parsed += 1
+            for taiwan in TAIWAN_READING_RE.findall(definitions):
+                tokens = taiwan_syllables(taiwan)
+                # Only whole-word readings: one syllable per character.
+                if tokens is None or len(tokens) != len(traditional):
+                    continue
+                taiwan_reading = convert_reading(tokens)
+                if taiwan_reading:
+                    for key in add_reading(entries, taiwan_reading, traditional):
+                        taiwan_pairs.add((key, traditional))
+                    taiwan_readings += 1
+
+    taiwan_only = taiwan_pairs - regular_pairs
+    taiwan_file = args.taiwan_readings or rebuild_output / "taiwan_readings.tsv"
+    taiwan_file.parent.mkdir(parents=True, exist_ok=True)
+    with taiwan_file.open("w", encoding="utf-8", newline="\n") as f:
+        for key, word in sorted(taiwan_only):
+            f.write(f"{key}\t{word}\n")
 
     with target.open("w", encoding="utf-8", newline="\n") as f:
         f.write("# CC-CEDICT converted to Zhuyin by tools/build_zhuyin_dictionary.py\n")
         f.write("# Candidates ranked with McBopomofo phrase.occ frequency data\n")
         f.write("# key<TAB>candidate1 candidate2 ...\n")
         for key in sorted(entries.keys(), key=lambda k: (len(k), k)):
-            ranked = rank_candidates(entries[key], frequencies)
+            ranked = rank_key_candidates(key, entries[key], frequencies, taiwan_only)
             f.write(f"{key}\t{' '.join(ranked[:128])}\n")
 
     generated_asset_sha256 = hashlib.sha256(target.read_bytes()).hexdigest()
@@ -292,7 +373,9 @@ def main() -> None:
         "License: Creative Commons Attribution-ShareAlike 4.0 International (CC BY-SA 4.0)\n"
         "License URL: https://creativecommons.org/licenses/by-sa/4.0/\n"
         "Changes: Traditional entries and Pinyin readings were converted into "
-        "Zhuyin lookup keys; candidate lists were truncated and ranked as documented below.\n"
+        "Zhuyin lookup keys; Taiwan pronunciations noted in definitions (\"Taiwan pr.\") "
+        "were added as extra readings; candidate lists were truncated and ranked as "
+        "documented below.\n"
         "Generated by tools/build_zhuyin_dictionary.py from cedict.txt.gz.\n"
         f"Generated asset SHA-256: {generated_asset_sha256}\n"
         "Source URL note: the MDBG download URL is mutable; the source SHA-256 "
@@ -315,7 +398,7 @@ def main() -> None:
         newline="\n",
     )
     print(
-        f"parsed={parsed} skipped={skipped} keys={len(entries)} "
+        f"parsed={parsed} skipped={skipped} taiwan_readings={taiwan_readings} keys={len(entries)} "
         f"frequencies={len(frequencies)} target={target}"
     )
 

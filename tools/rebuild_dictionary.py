@@ -20,10 +20,13 @@ def main():
     base = out / "base.tsv"
     license_file = out / "zhuyin_cedict_LICENSE.txt"
     target = out / "zhuyin_cedict.tsv"
+    taiwan = out / "taiwan_readings.tsv"
     subprocess.run([sys.executable, str(ROOT / "tools/build_zhuyin_dictionary.py"),
-                    "--target", str(base), "--license-file", str(license_file)], check=True)
+                    "--target", str(base), "--license-file", str(license_file),
+                    "--taiwan-readings", str(taiwan)], check=True)
     subprocess.run([sys.executable, str(ROOT / "tools/merge_mcbopomofo_dictionary.py"),
-                    "--base", str(base), "--target", str(target)], check=True)
+                    "--base", str(base), "--target", str(target),
+                    "--taiwan-readings", str(taiwan)], check=True)
     digest = hashlib.sha256(target.read_bytes()).hexdigest()
     text = license_file.read_text(encoding="utf-8")
     text = text.replace(hashlib.sha256(base.read_bytes()).hexdigest(), digest)

@@ -7,7 +7,8 @@ from pathlib import Path
 from build_zhuyin_dictionary import (
     append_unique,
     load_phrase_frequencies,
-    rank_candidates,
+    load_taiwan_readings,
+    rank_key_candidates,
     strip_tones,
 )
 
@@ -49,6 +50,7 @@ def load_dictionary(source: Path) -> dict[str, list[str]]:
 def merge_mappings(
     entries: dict[str, list[str]],
     source: Path,
+    taiwan_only: set[tuple[str, str]],
 ) -> tuple[int, int, int]:
     verify_sha256(source, MCBOPOMOFO_MAPPINGS_SHA256)
     original_keys = len(entries)
@@ -67,6 +69,9 @@ def merge_mappings(
                 raise ValueError(f"Invalid BPMFMappings row at line {line_number}")
             append_unique(entries, toned_key, phrase)
             append_unique(entries, untoned_key, phrase)
+            # McBopomofo confirms this reading, so it is no longer Taiwan-only.
+            taiwan_only.discard((toned_key, phrase))
+            taiwan_only.discard((untoned_key, phrase))
             parsed += 1
 
     added_keys = len(entries) - original_keys
@@ -78,6 +83,7 @@ def write_dictionary(
     target: Path,
     entries: dict[str, list[str]],
     frequencies: dict[str, int],
+    taiwan_only: set[tuple[str, str]],
 ) -> None:
     target.parent.mkdir(parents=True, exist_ok=True)
     with target.open("w", encoding="utf-8", newline="\n") as file:
@@ -88,7 +94,7 @@ def write_dictionary(
         file.write(f"# McBopomofo pinned commit: {MCBOPOMOFO_COMMIT}\n")
         file.write("# key<TAB>candidate1 candidate2 ...\n")
         for key in sorted(entries, key=lambda value: (len(value), value)):
-            candidates = rank_candidates(entries[key], frequencies)
+            candidates = rank_key_candidates(key, entries[key], frequencies, taiwan_only)
             file.write(f"{key}\t{' '.join(candidates[:MAX_CANDIDATES_PER_KEY])}\n")
 
 
@@ -112,12 +118,14 @@ def main() -> None:
         type=Path,
         default=root / "build" / "dictionary-comparison" / "zhuyin_cedict.tsv",
     )
+    parser.add_argument("--taiwan-readings", type=Path, default=None)
     args = parser.parse_args()
 
     frequencies = load_phrase_frequencies(root / "tools" / "data" / "mcbopomofo_phrase.occ")
     entries = load_dictionary(args.base)
-    parsed, added_keys, added_pairs = merge_mappings(entries, args.mappings)
-    write_dictionary(args.target, entries, frequencies)
+    taiwan_only = load_taiwan_readings(args.taiwan_readings)
+    parsed, added_keys, added_pairs = merge_mappings(entries, args.mappings, taiwan_only)
+    write_dictionary(args.target, entries, frequencies, taiwan_only)
     digest = hashlib.sha256(args.target.read_bytes()).hexdigest()
     print(
         f"parsed_mappings={parsed} added_keys={added_keys} added_pairs={added_pairs} "

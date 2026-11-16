@@ -14,7 +14,7 @@ python tools/rebuild_dictionary.py --check
 python tools/rebuild_dictionary.py
 ```
 
-Expected TSV SHA-256: `df1664881c7417be73d430ee90915ba13d70aa67f19632a70d170bdeefb5ead9`.
+Expected TSV SHA-256: `94beda235364bac654694ae61cef34e0e79a76a855ce18d3aaa45ca374d93f86`.
 Both commands verify all three data source checksums before generation.
 The check command compares the asset and complete generated license notice.
 Prefix lookup discovers sorted length boundaries using binary search; no separate

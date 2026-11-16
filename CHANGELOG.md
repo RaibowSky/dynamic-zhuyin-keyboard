@@ -3,6 +3,7 @@
 ## Unreleased
 
 - Return no longer breaks the line while Zhuyin is still being composed: after typing a tone, it confirms the selected candidate like 選定, and the key reads 選定 until the reading is committed. A new switch in 字體大小、鍵盤高度與外觀 (換行鍵) restores confirming and breaking the line in one press.
+- Add Taiwan pronunciations that CC-CEDICT notes as "Taiwan pr.", such as 和 under ㄏㄢˋ (551 readings, 99 new keys). They never displace a reading's existing first candidate.
 
 ## 1.3.1 (2026-10-18)
 
