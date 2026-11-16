@@ -165,7 +165,34 @@ open class IOSZhuyinIME : InputMethodService() {
         if (merged.isEmpty() && splitSegments(raw).size == 1) {
             ZhuyinDictionary.getCandidates(stripTones(raw))?.let(merged::addAll)
         }
+        promoteNeutralToneParticles(raw, merged)
         return merged
+    }
+
+    /**
+     * Particles such as 嗎, 個, 的, 了 are often typed with whatever tone is
+     * nearest (ㄇㄚˋ, ㄍㄜˊ). For a single toned syllable, move its two most common
+     * neutral-tone characters up to the third and fourth slots so they are on screen.
+     */
+    private fun promoteNeutralToneParticles(raw: String, merged: MutableList<String>) {
+        val segments = splitSegments(raw)
+        if (segments.size != 1 || !raw.endsWith(segments[0].text)) return
+        val mark = raw.lastOrNull()
+        if (mark == null || mark !in TONE_CHARS || mark == '˙') return
+        val base = raw.dropLast(1)
+        val particles = (COMMON_PARTICLES[base].orEmpty() + ZhuyinDictionary.getCandidates("$base˙").orEmpty())
+            .filter { it.codePointCount(0, it.length) == 1 }
+            .distinct()
+            .take(NEUTRAL_PARTICLES)
+        if (particles.isEmpty() || merged.isEmpty()) return
+        var slot = minOf(NEUTRAL_PARTICLE_SLOT, merged.size)
+        for (particle in particles) {
+            val existing = merged.indexOf(particle)
+            if (existing in 0 until slot) continue
+            if (existing >= 0) merged.removeAt(existing)
+            merged.add(minOf(slot, merged.size), particle)
+            slot++
+        }
     }
 
     private fun prefixCandidatesForKey(raw: String): List<String> =
@@ -1773,6 +1800,13 @@ open class IOSZhuyinIME : InputMethodService() {
     }
 
     companion object {
+        private const val NEUTRAL_PARTICLES = 2
+        private const val NEUTRAL_PARTICLE_SLOT = 2
+        /** Everyday particles and measure words, ahead of the dictionary's neutral-tone order. */
+        private val COMMON_PARTICLES = mapOf(
+            "ㄇㄚ" to listOf("嗎"), "ㄍㄜ" to listOf("個"), "ㄉㄜ" to listOf("的"),
+            "ㄌㄜ" to listOf("了"), "ㄅㄚ" to listOf("吧"), "ㄋㄜ" to listOf("呢"), "ㄌㄚ" to listOf("啦")
+        )
         private const val TAG = "IOSZhuyinIME"
         private const val RERANK_CONTEXT = 64
         private const val RERANK_CANDIDATES = 8

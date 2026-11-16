@@ -177,9 +177,16 @@ internal object ZhuyinComposition {
                     candidatesForReading = candidatesForReading
                 )
             }
-            val partial = composeSyllableCandidates(raw, segments,
+            val composedPartial = composeSyllableCandidates(raw, segments,
                 preferredPrefixCandidatesForReading, candidatesForReading, prefixCandidatesForReading)
-                .map { it.text }
+            val firstWord = composedPartial.firstOrNull()
+            // After a partial pick, keep offering the rest word by word even
+            // while its last syllable is still being typed.
+            if (wordByWord && firstWord != null && firstWord.firstEnd in 1 until raw.length) {
+                return sentenceThenLeadingWords(firstWord.firstWord, firstWord.firstEnd, raw, segments,
+                    preferredPrefixCandidatesForReading, candidatesForReading)
+            }
+            val partial = composedPartial.map { it.text }
             if (partial.isNotEmpty()) {
                 return withLeadingCharacterAlternatives(
                     CandidateMatch(raw, partial, 0, raw.length, isProvisional = true),

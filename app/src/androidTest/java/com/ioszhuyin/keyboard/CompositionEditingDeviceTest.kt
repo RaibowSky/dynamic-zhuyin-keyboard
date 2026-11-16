@@ -166,6 +166,29 @@ class CompositionEditingDeviceTest {
         assertEquals(raw().length, choices().first().end)
     }
 
+    @Test fun wordByWordAlsoWhileTheLastSyllableHasNoToneYet() = run {
+        @Suppress("UNCHECKED_CAST")
+        fun choices() = field("candidateChoices").get(ime) as List<CandidateChoice>
+        // Each key is reported back like a real editor before the next one.
+        "ㄙㄨㄛˇㄧˇㄓㄜˋㄧˊㄎㄨㄞˋㄕˋㄉㄧㄢˋㄋㄠˇㄘㄞˊㄧㄡˇㄅㄢˋㄈㄚ".forEach { type(it.toString()); flush() }
+        val suo = choices().indexOfFirst { it.text == "所" }
+        assertTrue(choices().map { it.text }.toString(), suo > 0)
+        call("handleCandidatePress", suo)
+        reports.clear()
+        report()
+        assertEquals("ㄧˇㄓㄜˋㄧˊㄎㄨㄞˋㄕˋㄉㄧㄢˋㄋㄠˇㄘㄞˊㄧㄡˇㄅㄢˋㄈㄚ", raw())
+        assertTrue(choices().map { it.text }.toString(), choices().first().end < raw().length)
+        assertTrue(choices().first().text.length <= 3)
+    }
+
+    @Test fun particlesAppearWhateverToneWasTyped() {
+        for ((reading, particle) in listOf("ㄇㄚˊ" to "嗎", "ㄇㄚˋ" to "嗎", "ㄇㄚˇ" to "嗎", "ㄍㄜˊ" to "個", "ㄍㄜˉ" to "個")) run {
+            reading.forEach { type(it.toString()); flush() }
+            val shown = (field("allCandidates").get(ime) as List<*>).take(4)
+            assertTrue("$reading: $shown", particle in shown)
+        }
+    }
+
     @Test fun fullyTonedReadingDoesNotMatchWordsWithOtherTones() = run {
         type("ㄋㄧˇㄨˋㄏㄨㄟˋㄌㄜ˙")
         flush()
