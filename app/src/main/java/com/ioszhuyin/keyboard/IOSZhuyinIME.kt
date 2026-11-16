@@ -207,7 +207,8 @@ open class IOSZhuyinIME : InputMethodService() {
     }
     @Volatile private var reranker: CandidateReranker? = null
     private var rerankerLoading = false
-    private var rerankGeneration = 0
+    @Volatile private var rerankGeneration = 0
+    private var candidateAlternatives: List<String> = emptyList()
 
     private fun updateReranker() {
         val wanted = RerankModelPack.enabled(this) && RerankModelPack.installed(this)
@@ -244,36 +245,44 @@ open class IOSZhuyinIME : InputMethodService() {
     }
 
     /**
-     * Reorders the candidates that cover the same reading as the first one. The
-     * dictionary order is shown at once; the model's order replaces it only if
-     * nothing changed while it ran and the user has not moved the selection.
+     * Lets the model choose among whole sentences (or, for a single word, among
+     * the candidates of the same reading). The dictionary order is shown at once;
+     * the model's choice replaces it only if nothing changed while it ran and the
+     * user has not moved the selection.
      */
     private fun scheduleRerank() {
         val model = reranker ?: return
         val choices = candidateChoices
         val first = choices.firstOrNull()?.takeUnless { it.isProvisional } ?: return
-        val group = choices.indices.filter {
+        val raw = composingText.toString()
+        val syllables = splitSegments(raw.substring(first.start, first.end)).map { it.text }
+        val sentences = candidateAlternatives.take(RERANK_CANDIDATES)
+        val group = if (sentences.size >= 2) emptyList() else choices.indices.filter {
             val choice = choices[it]
             !choice.isProvisional && choice.start == first.start && choice.end == first.end
         }.take(RERANK_CANDIDATES)
-        if (group.size < 2) return
+        val texts = if (sentences.size >= 2) sentences else group.map { choices[it].text }
+        if (texts.size < 2 || syllables.size < 2) return
         val context = rerankContext() ?: return
         val generation = ++rerankGeneration
-        val raw = composingText.toString()
-        val texts = group.map { choices[it].text }
         rerankExecutor.execute {
+            if (generation != rerankGeneration) return@execute // superseded while queued
             val started = SystemClock.elapsedRealtime()
-            val order = runCatching { model.rank(context, texts) }
+            val order = runCatching { model.rank(context, syllables, texts) }
                 .onFailure { Log.w(TAG, "Rerank failed", it) }
                 .getOrNull()
-            Log.i(TAG, "rerank ms=${SystemClock.elapsedRealtime() - started} n=${texts.size}")
-            if (order == null) return@execute
+            Log.i(TAG, "rerank ms=${SystemClock.elapsedRealtime() - started} n=${texts.size} syllables=${syllables.size}")
+            if (order == null || order.first() == 0) return@execute
             mainHandler.post {
                 if (generation != rerankGeneration || candidateChoices !== choices ||
                     composingText.toString() != raw || selectedCandidateIndex != 0
                 ) return@post
                 val reordered = choices.toMutableList()
-                order.forEachIndexed { slot, source -> reordered[group[slot]] = choices[group[source]] }
+                if (group.isEmpty()) {
+                    reordered[0] = first.copy(text = texts[order.first()])
+                } else {
+                    order.forEachIndexed { slot, source -> reordered[group[slot]] = choices[group[source]] }
+                }
                 candidateChoices = reordered
                 allCandidates = reordered.map(CandidateChoice::text)
                 syncKeyboardView()
@@ -471,6 +480,7 @@ open class IOSZhuyinIME : InputMethodService() {
             candidatesForReading = ::getSortedCandidates
         )
         candidateChoices = match?.choices.orEmpty()
+        candidateAlternatives = match?.alternatives.orEmpty()
         allCandidates = candidateChoices.map(CandidateChoice::text)
         if (resetSelection) scheduleRerank()
 
@@ -1699,7 +1709,7 @@ open class IOSZhuyinIME : InputMethodService() {
 
     companion object {
         private const val TAG = "IOSZhuyinIME"
-        private const val RERANK_CONTEXT = 31
+        private const val RERANK_CONTEXT = 64
         private const val RERANK_CANDIDATES = 8
         private const val MAX_BACKSPACE_CONTEXT = 64
         private const val PREFIX_CANDIDATE_LIMIT = 18

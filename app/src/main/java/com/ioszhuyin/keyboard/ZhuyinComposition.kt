@@ -21,6 +21,8 @@ internal data class CandidateMatch(
     val start: Int,
     val end: Int,
     val isProvisional: Boolean = false,
+    /** Other whole sentences for the first choice's span, best first, for a model to choose from. */
+    val alternatives: List<String> = emptyList(),
     val choices: List<CandidateChoice> = candidates.map { candidate ->
         CandidateChoice(
             text = candidate,
@@ -36,6 +38,8 @@ internal object ZhuyinComposition {
     private const val MAX_SYLLABLE_LENGTH = 3
     private const val MAX_FALLBACK_CANDIDATES = 9
     private const val MAX_LEADING_WORD_SYLLABLES = 8
+    private const val NEUTRAL_FINAL_ALTERNATIVES = 2
+    private const val NEUTRAL_FINAL_PENALTY = 3
     private val toneChars = setOf('ˉ', '˙', 'ˊ', 'ˇ', 'ˋ')
 
     fun splitSegments(
@@ -116,6 +120,7 @@ internal object ZhuyinComposition {
         )
         if (composedCandidates.isNotEmpty()) {
             val best = composedCandidates.first()
+            val sentences = composedCandidates.map { it.text }
             return sentenceThenLeadingWords(
                 sentence = if (wordByWord) best.firstWord else best.text,
                 sentenceEnd = if (wordByWord) best.firstEnd else raw.length,
@@ -123,7 +128,7 @@ internal object ZhuyinComposition {
                 segments = segments,
                 preferredCandidates = preferredPrefixCandidatesForReading,
                 candidatesForReading = candidatesForReading
-            )
+            ).let { if (wordByWord) it else it.copy(alternatives = sentences) }
         }
 
         // When a complete path is unavailable, preserve manual prefix correction.
@@ -334,6 +339,22 @@ internal object ZhuyinComposition {
                 val choices = (normalizedChoices +
                     if (normalized != reading) candidatesForReading(reading) else emptyList())
                     .distinct().filter { span > 1 || isSingleCodePoint(it) }.take(4)
+                // Sentence-final particles (嗎, 吧, 呢) are often typed with a full
+                // tone. Offer the neutral-tone characters as costlier sentences so a
+                // model can choose them; the dictionary's own choice stays first.
+                if (end == segments.size && span == 1) {
+                    val last = segments[start]
+                    val mark = last.text.lastOrNull()
+                    if (last.hasTone && mark != '˙') {
+                        candidatesForReading(last.text.dropLast(1) + "˙")
+                            .filter { isSingleCodePoint(it) && it !in choices }
+                            .take(NEUTRAL_FINAL_ALTERNATIVES)
+                            .forEach { particle ->
+                                for (prefix in prefixes) beams[end].add(Path(prefix.text + particle,
+                                    prefix.cost + 12 - 2 + NEUTRAL_FINAL_PENALTY, prefix.firstWord, prefix.firstEnd))
+                            }
+                    }
+                }
                 for ((rank, choice) in choices.withIndex()) {
                     // Fewer phrase boundaries beat naive character concatenation.
                     // Bonuses are bounded, so one learned word cannot dominate a sentence.
