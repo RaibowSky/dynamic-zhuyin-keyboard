@@ -20,12 +20,15 @@ The file `app/src/main/assets/zhuyin_cedict.tsv` is generated from CC-CEDICT.
 - Copyright notice retained from the source header:
   Referenced works: CEDICT - Copyright (C) 1997, 1998 Paul Andrew Denisowski
 - Local conversion script: `tools/build_zhuyin_dictionary.py`
-- Bundled asset SHA-256: `df1664881c7417be73d430ee90915ba13d70aa67f19632a70d170bdeefb5ead9`
+- Bundled asset SHA-256: `94beda235364bac654694ae61cef34e0e79a76a855ce18d3aaa45ca374d93f86`
 
 Transformation performed:
 
 - Read Traditional Chinese entries and Pinyin readings from `cedict.txt.gz`.
 - Convert Pinyin syllables into Zhuyin symbols and tone marks.
+- Add the Taiwan pronunciations that definitions note as "Taiwan pr. [...]"
+  (e.g. 和 ㄏㄢˋ) as extra readings; a word reachable only through such a note
+  never becomes a key's first candidate.
 - Generate keyed candidate rows in `key<TAB>candidate1 candidate2 ...` format.
 - Include both toned and untoned lookup keys for IME candidate lookup.
 - Merge the separately attributed McBopomofo phrase readings described below.

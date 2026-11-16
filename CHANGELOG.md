@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- Add Taiwan pronunciations that CC-CEDICT notes as "Taiwan pr.", such as 和 under ㄏㄢˋ (551 readings, 99 new keys). They never displace a reading's existing first candidate.
+
 ## 1.3.1 (2026-10-18)
 
 - Holding Backspace plays the key sound for every repeated deletion, not only the first press (when the key sound is on).

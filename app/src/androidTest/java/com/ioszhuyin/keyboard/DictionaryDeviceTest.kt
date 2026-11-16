@@ -89,6 +89,15 @@ class DictionaryDeviceTest {
         assertEquals(raw.length, match.end)
     }
 
+    @Test fun taiwanReadingsAreOfferedWithoutTakingTheFirstSlot() {
+        ZhuyinDictionary.initialize(InstrumentationRegistry.getInstrumentation().targetContext)
+        val han = ZhuyinDictionary.getCandidates("ㄏㄢˋ").orEmpty()
+        assertEquals("漢", han.first())
+        assertEquals("和", han[1])
+        assertEquals("必", ZhuyinDictionary.getCandidates("ㄅㄧˋ").orEmpty().first())
+        assertTrue("攜帶" in ZhuyinDictionary.getCandidates("ㄒㄧˉㄉㄞˋ").orEmpty())
+    }
+
     @Test fun typingPreloadPreservesCandidateOrderAndSyllableRules() {
         val context = InstrumentationRegistry.getInstrumentation().targetContext
         ZhuyinDictionary.initialize(context)

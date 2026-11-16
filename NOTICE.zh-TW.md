@@ -19,12 +19,13 @@
 - 保留來源檔頭的著作權聲明：
   Referenced works: CEDICT - Copyright (C) 1997, 1998 Paul Andrew Denisowski
 - 本地轉換腳本：`tools/build_zhuyin_dictionary.py`
-- 打包資產 SHA-256：`df1664881c7417be73d430ee90915ba13d70aa67f19632a70d170bdeefb5ead9`
+- 打包資產 SHA-256：`94beda235364bac654694ae61cef34e0e79a76a855ce18d3aaa45ca374d93f86`
 
 執行的轉換內容：
 
 - 從 `cedict.txt.gz` 讀取繁體中文詞條與拼音讀音。
 - 將拼音音節轉換為注音符號與聲調標記。
+- 釋義中以「Taiwan pr. [...]」註明的台灣讀音（例如「和 ㄏㄢˋ」）另外加為讀音；只靠這類註記才查得到的字詞，不會排在該讀音的第一位。
 - 產生 `key<TAB>candidate1 candidate2 ...` 格式的候選字資料列。
 - 同時包含有聲調與無聲調的查詢鍵，以供輸入法候選字查詢使用。
 - 合併下方另行標示來源的 McBopomofo 片語與注音讀音。
