@@ -9,6 +9,7 @@ import android.media.AudioManager
 import android.os.Build
 import android.os.Handler
 import android.os.Looper
+import android.os.SystemClock
 import android.os.VibrationEffect
 import android.util.Log
 import android.view.KeyEvent
@@ -16,6 +17,7 @@ import android.view.View
 import android.view.inputmethod.EditorInfo
 import android.widget.LinearLayout
 import java.io.File
+import java.util.concurrent.Executors
 
 open class IOSZhuyinIME : InputMethodService() {
 
@@ -198,7 +200,91 @@ open class IOSZhuyinIME : InputMethodService() {
         }
     }
 
+    // Experimental model reranking (off unless a model pack is imported and enabled).
+    private val rerankExecutor = Executors.newSingleThreadExecutor { task ->
+        Thread(task, "zhuyin-rerank").apply { isDaemon = true }
+    }
+    @Volatile private var reranker: CandidateReranker? = null
+    private var rerankerLoading = false
+    private var rerankGeneration = 0
+
+    private fun updateReranker() {
+        val wanted = RerankModelPack.enabled(this) && RerankModelPack.installed(this)
+        if (!wanted) {
+            val old = reranker
+            reranker = null
+            if (old != null) rerankExecutor.execute { old.close() }
+            return
+        }
+        if (reranker != null || rerankerLoading) return
+        rerankerLoading = true
+        val dir = RerankModelPack.dir(this)
+        rerankExecutor.execute {
+            val started = SystemClock.elapsedRealtime()
+            val loaded = runCatching { CandidateReranker.open(dir) }
+                .onFailure { Log.w(TAG, "Unable to load rerank model", it) }
+                .getOrNull()
+            Log.i(TAG, "rerank load ms=${SystemClock.elapsedRealtime() - started} ok=${loaded != null}")
+            mainHandler.post {
+                rerankerLoading = false
+                reranker = loaded
+            }
+        }
+    }
+
+    /** Text before the reading being composed, or null when it cannot be read reliably. */
+    private fun rerankContext(): String? {
+        if (editorCompositionPending) return null
+        val ic = currentInputConnection ?: return null
+        val typed = composingText.substring(0, composingSelectionStart.coerceIn(0, composingText.length))
+        val before = ic.getTextBeforeCursor(RERANK_CONTEXT + typed.length, 0)?.toString() ?: return null
+        if (!before.endsWith(typed)) return null
+        return before.dropLast(typed.length).takeLast(RERANK_CONTEXT)
+    }
+
+    /**
+     * Reorders the candidates that cover the same reading as the first one. The
+     * dictionary order is shown at once; the model's order replaces it only if
+     * nothing changed while it ran and the user has not moved the selection.
+     */
+    private fun scheduleRerank() {
+        val model = reranker ?: return
+        val choices = candidateChoices
+        val first = choices.firstOrNull()?.takeUnless { it.isProvisional } ?: return
+        val group = choices.indices.filter {
+            val choice = choices[it]
+            !choice.isProvisional && choice.start == first.start && choice.end == first.end
+        }.take(RERANK_CANDIDATES)
+        if (group.size < 2) return
+        val context = rerankContext() ?: return
+        val generation = ++rerankGeneration
+        val raw = composingText.toString()
+        val texts = group.map { choices[it].text }
+        rerankExecutor.execute {
+            val started = SystemClock.elapsedRealtime()
+            val order = runCatching { model.rank(context, texts) }
+                .onFailure { Log.w(TAG, "Rerank failed", it) }
+                .getOrNull()
+            Log.i(TAG, "rerank ms=${SystemClock.elapsedRealtime() - started} n=${texts.size}")
+            if (order == null) return@execute
+            mainHandler.post {
+                if (generation != rerankGeneration || candidateChoices !== choices ||
+                    composingText.toString() != raw || selectedCandidateIndex != 0
+                ) return@post
+                val reordered = choices.toMutableList()
+                order.forEachIndexed { slot, source -> reordered[group[slot]] = choices[group[source]] }
+                candidateChoices = reordered
+                allCandidates = reordered.map(CandidateChoice::text)
+                syncKeyboardView()
+            }
+        }
+    }
+
     override fun onDestroy() {
+        rerankGeneration++
+        reranker?.let { old -> rerankExecutor.execute { old.close() } }
+        reranker = null
+        rerankExecutor.shutdown()
         inputContainer?.closeClipboard()
         inputContainer = null
         if (::clipboardHistory.isInitialized) clipboardHistory.close()
@@ -370,6 +456,7 @@ open class IOSZhuyinIME : InputMethodService() {
         )
         candidateChoices = match?.choices.orEmpty()
         allCandidates = candidateChoices.map(CandidateChoice::text)
+        if (resetSelection) scheduleRerank()
 
         selectedCandidateIndex = when {
             allCandidates.isEmpty() -> -1
@@ -1329,6 +1416,7 @@ open class IOSZhuyinIME : InputMethodService() {
         applySystemTheme()
         keyboardView?.setReturnKeyLabel(editorReturnKeyLabel)
         keyboardView?.returnConfirmsComposition = !ReturnKeyOptions.confirmThenNewline(this)
+        updateReranker()
         if (composingText.isEmpty() && !editorCompositionPending) {
             resetToInitial()
         } else if (composingText.isEmpty()) {
@@ -1587,6 +1675,8 @@ open class IOSZhuyinIME : InputMethodService() {
 
     companion object {
         private const val TAG = "IOSZhuyinIME"
+        private const val RERANK_CONTEXT = 31
+        private const val RERANK_CANDIDATES = 8
         private const val MAX_BACKSPACE_CONTEXT = 64
         private const val PREFIX_CANDIDATE_LIMIT = 18
         private const val CANDIDATE_CACHE_CAPACITY = 128

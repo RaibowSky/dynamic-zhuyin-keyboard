@@ -25,6 +25,9 @@ android {
         versionCode = 6
         versionName = "1.3.1"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+        // Experiment: ONNX Runtime ships ~18-22 MB of native code per ABI; keep
+        // phones (arm64) and the emulator (x86_64) only.
+        ndk { abiFilters += listOf("arm64-v8a", "x86_64") }
     }
 
     // Two permanent installation identities; see docs/RELEASING.md.
@@ -97,6 +100,8 @@ dependencies {
     implementation("androidx.appcompat:appcompat:1.6.1")
     implementation("com.google.android.material:material:1.11.0")
     implementation("androidx.constraintlayout:constraintlayout:2.1.4")
+    // Experimental candidate reranker; the model itself is imported separately.
+    implementation("com.microsoft.onnxruntime:onnxruntime-android:1.22.0")
 
     testImplementation("junit:junit:4.13.2")
     androidTestImplementation("androidx.test:runner:1.6.2")
