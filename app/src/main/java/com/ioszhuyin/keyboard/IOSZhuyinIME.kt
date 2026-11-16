@@ -160,6 +160,11 @@ open class IOSZhuyinIME : InputMethodService() {
                 if (candidate !in merged) merged.add(candidate)
             }
         }
+        // A single syllable typed with a tone no character has (ㄖㄢˋ) still
+        // offers its other tones, so one slip does not empty the whole sentence.
+        if (merged.isEmpty() && splitSegments(raw).size == 1) {
+            ZhuyinDictionary.getCandidates(stripTones(raw))?.let(merged::addAll)
+        }
         return merged
     }
 
@@ -361,7 +366,7 @@ open class IOSZhuyinIME : InputMethodService() {
         }
         view.onCursorMove = { steps ->
             lastCommittedWord = ""
-            moveEditingCursor(steps)
+            moveCursorWithinReading(steps)
         }
         view.onEditAction = { label -> handleEditAction(label) }
         view.onReturn = { handleReturn() }
@@ -1201,6 +1206,22 @@ open class IOSZhuyinIME : InputMethodService() {
             if (!finishRawCompositionForEditing()) return false
             return safeEditorOperation("cursor movement") { CursorNavigation.move(connection, steps) }
         }
+        return setCompositionSelection(target, target)
+    }
+
+    /**
+     * Space-bar dragging stays inside the reading: overshooting its first or
+     * last position stops there instead of committing the zhuyin as text.
+     * The ◀ ▶ edit keys still leave the reading.
+     */
+    private fun moveCursorWithinReading(steps: Int): Boolean {
+        if (composingText.isEmpty()) return moveEditingCursor(steps)
+        if (!synchronizePendingComposition()) return false
+        if (steps == 0) return true
+        val (start, end) = composingSelection()
+        val anchor = if (steps > 0) end else start
+        val target = (anchor + steps.coerceIn(-64, 64)).coerceIn(0, composingText.length)
+        if (start == end && target == start) return true
         return setCompositionSelection(target, target)
     }
 

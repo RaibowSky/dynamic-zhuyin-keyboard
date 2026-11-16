@@ -175,6 +175,30 @@ class CompositionEditingDeviceTest {
         assertTrue(choices.none { "泥污" in it.text || "回了" in it.text })
     }
 
+    @Test fun aSyllableWithAnUnusedToneStillLetsTheSentenceCompose() = run {
+        type("ㄖㄢˋㄨㄛˋㄕˋㄍㄢˋㄌㄧˊㄒㄧˉ") // no character reads ㄖㄢˋ
+        flush()
+        @Suppress("UNCHECKED_CAST")
+        val choices = field("candidateChoices").get(ime) as List<CandidateChoice>
+        assertTrue(choices.isNotEmpty())
+        assertEquals(raw().length, choices.first().end)
+    }
+
+    @Test fun spaceDragStopsAtTheReadingEdgesInsteadOfLeavingIt() = run {
+        type("ㄋㄧˇㄏㄠˇ")
+        flush()
+        call("moveCursorWithinReading", 3)
+        flush()
+        assertReading("ㄋㄧˇㄏㄠˇ", 7)
+        call("moveCursorWithinReading", -20)
+        flush()
+        assertReading("ㄋㄧˇㄏㄠˇ", 1)
+        call("moveCursorWithinReading", 20)
+        flush()
+        assertReading("ㄋㄧˇㄏㄠˇ", 7)
+        assertTrue((field("allCandidates").get(ime) as List<*>).isNotEmpty())
+    }
+
     @Test fun delayedCallbacksCannotResetTheCaretOrLoseRapidEdits() = run {
         type("ㄋㄧˇㄏㄠˇ")
         flush()
