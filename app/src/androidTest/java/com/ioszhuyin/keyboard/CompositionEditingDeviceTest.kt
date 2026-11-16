@@ -145,6 +145,27 @@ class CompositionEditingDeviceTest {
         assertReading("ㄔˊㄕˋㄇㄟˊ", 3)
     }
 
+    @Test fun pickingPartOfASentenceContinuesWordByWord() = run {
+        type("ㄨㄛˇㄍㄢˇㄐㄩㄝˊㄋㄧˇㄨˋㄏㄨㄟˋㄌㄜ˙")
+        flush()
+        @Suppress("UNCHECKED_CAST")
+        fun choices() = field("candidateChoices").get(ime) as List<CandidateChoice>
+        assertEquals(raw().length, choices().first().end) // a whole sentence first
+        val wo = choices().indexOfFirst { it.text == "我" && it.end == 3 }
+        assertTrue(wo > 0)
+        call("handleCandidatePress", wo)
+        reports.clear() // an editor reports a batch edit once, after it ends
+        report()
+        assertEquals("前我ㄍㄢˇㄐㄩㄝˊㄋㄧˇㄨˋㄏㄨㄟˋㄌㄜ˙", editor.text.toString())
+        assertEquals("ㄍㄢˇㄐㄩㄝˊㄋㄧˇㄨˋㄏㄨㄟˋㄌㄜ˙", raw())
+        assertEquals("感覺", choices().first().text)
+        assertEquals("ㄍㄢˇㄐㄩㄝˊ".length, choices().first().end)
+        type("ㄅ") // typing again returns to whole sentences
+        flush()
+        assertTrue(raw().endsWith("ㄅ"))
+        assertEquals(raw().length, choices().first().end)
+    }
+
     @Test fun delayedCallbacksCannotResetTheCaretOrLoseRapidEdits() = run {
         type("ㄋㄧˇㄏㄠˇ")
         flush()

@@ -35,6 +35,7 @@ internal data class CandidateMatch(
 internal object ZhuyinComposition {
     private const val MAX_SYLLABLE_LENGTH = 3
     private const val MAX_FALLBACK_CANDIDATES = 9
+    private const val MAX_LEADING_WORD_SYLLABLES = 8
     private val toneChars = setOf('ˉ', '˙', 'ˊ', 'ˇ', 'ˋ')
 
     fun splitSegments(
@@ -83,6 +84,7 @@ internal object ZhuyinComposition {
         segments: List<ZhuyinSegment>,
         preferredPrefixCandidatesForReading: (String) -> List<String> = { emptyList() },
         prefixCandidatesForReading: (String) -> List<String> = { emptyList() },
+        wordByWord: Boolean = false,
         candidatesForReading: (String) -> List<String>
     ): CandidateMatch? {
         if (raw.isEmpty()) return null
@@ -113,15 +115,13 @@ internal object ZhuyinComposition {
             candidatesForReading = candidatesForReading
         )
         if (composedCandidates.isNotEmpty()) {
-            return withLeadingCharacterAlternatives(
-                match = CandidateMatch(
-                    reading = raw,
-                    candidates = composedCandidates,
-                    start = 0,
-                    end = raw.length
-                ),
+            val best = composedCandidates.first()
+            return sentenceThenLeadingWords(
+                sentence = if (wordByWord) best.firstWord else best.text,
+                sentenceEnd = if (wordByWord) best.firstEnd else raw.length,
                 raw = raw,
                 segments = segments,
+                preferredCandidates = preferredPrefixCandidatesForReading,
                 candidatesForReading = candidatesForReading
             )
         }
@@ -174,6 +174,7 @@ internal object ZhuyinComposition {
             }
             val partial = composeSyllableCandidates(raw, segments,
                 preferredPrefixCandidatesForReading, candidatesForReading, prefixCandidatesForReading)
+                .map { it.text }
             if (partial.isNotEmpty()) {
                 return withLeadingCharacterAlternatives(
                     CandidateMatch(raw, partial, 0, raw.length, isProvisional = true),
@@ -199,6 +200,45 @@ internal object ZhuyinComposition {
             }
         }
         return null
+    }
+
+    /**
+     * A composed sentence is offered once (or, once the user has started
+     * correcting it, only its first word). If it is wrong, the rest of the list
+     * corrects it word by word from the start: the words that begin the reading,
+     * longest first, then single characters. Choosing one commits only that part
+     * and the remaining reading is composed again.
+     */
+    private fun sentenceThenLeadingWords(
+        sentence: String,
+        sentenceEnd: Int,
+        raw: String,
+        segments: List<ZhuyinSegment>,
+        preferredCandidates: (String) -> List<String>,
+        candidatesForReading: (String) -> List<String>
+    ): CandidateMatch {
+        val choices = mutableListOf(CandidateChoice(sentence, raw.substring(0, sentenceEnd), 0, sentenceEnd))
+        val lastWordSegment = minOf(segments.size - 1, MAX_LEADING_WORD_SYLLABLES)
+        for (count in lastWordSegment downTo 1) {
+            val end = segments[count - 1].end
+            val reading = raw.substring(0, end)
+            val normalized = (0 until count).joinToString("") { index ->
+                toneSandhiReading(segments[index], segments.getOrNull(index + 1)) ?: segments[index].text
+            }
+            val words = (preferredCandidates(reading) + candidatesForReading(normalized) +
+                if (normalized != reading) candidatesForReading(reading) else emptyList())
+                .distinct()
+                .filter { count > 1 || isSingleCodePoint(it) }
+            words.forEach { choices += CandidateChoice(it, reading, 0, end) }
+        }
+        val distinct = choices.distinctBy { Triple(it.text, it.start, it.end) }
+        return CandidateMatch(
+            reading = raw,
+            candidates = distinct.map(CandidateChoice::text),
+            start = 0,
+            end = raw.length,
+            choices = distinct
+        )
     }
 
     private fun withLeadingCharacterAlternatives(
@@ -270,10 +310,10 @@ internal object ZhuyinComposition {
         preferredCandidates: (String) -> List<String>,
         candidatesForReading: (String) -> List<String>,
         partialCandidates: (String) -> List<String> = { emptyList() }
-    ): List<String> {
+    ): List<ComposedSentence> {
         if (segments.size < 2 || segments.first().start != 0 ||
             segments.last().end != raw.length || segments.dropLast(1).any { !it.hasTone }) return emptyList()
-        data class Path(val text: String, val cost: Int)
+        data class Path(val text: String, val cost: Int, val firstWord: String = "", val firstEnd: Int = 0)
         val beams = Array(segments.size + 1) { mutableListOf<Path>() }
         beams[0].add(Path("", 0))
         val order = compareBy<Path> { it.cost }.thenBy { it.text }
@@ -300,7 +340,10 @@ internal object ZhuyinComposition {
                     val sandhiPenalty = if (normalized != reading && choice !in normalizedChoices && choice !in preferred) 16 else 0
                     val edgeCost = 12 + rank * 2 - minOf(span, 8) * 2 + sandhiPenalty -
                         (if (choice in preferred) 6 else 0)
-                    for (prefix in prefixes) beams[end].add(Path(prefix.text + choice, prefix.cost + edgeCost))
+                    for (prefix in prefixes) beams[end].add(
+                        if (start == 0) Path(choice, edgeCost, choice, segments[end - 1].end)
+                        else Path(prefix.text + choice, prefix.cost + edgeCost, prefix.firstWord, prefix.firstEnd)
+                    )
                 }
                 if (beams[end].size > MAX_FALLBACK_CANDIDATES) {
                     val best = beams[end].sortedWith(order).distinctBy { it.text }
@@ -311,8 +354,11 @@ internal object ZhuyinComposition {
             }
             beams[start].clear()
         }
-        return beams.last().sortedWith(order).distinctBy { it.text }.map { it.text }
+        return beams.last().sortedWith(order).distinctBy { it.text }
+            .map { ComposedSentence(it.text, it.firstWord, it.firstEnd) }
     }
+
+    internal data class ComposedSentence(val text: String, val firstWord: String, val firstEnd: Int)
 
     private fun toneSandhiReading(
         segment: ZhuyinSegment,

@@ -48,14 +48,31 @@ class SentenceDecoderTest {
         assertEquals("A私詞D", match.candidates.first())
     }
 
-    @Test fun longInputRetainsAlternativesAndHasNoSentenceLengthCeiling() {
+    @Test fun longInputHasNoSentenceLengthCeilingAndCorrectsFromTheStart() {
         val raw = "a".repeat(80)
         val match = ZhuyinComposition.resolveLeadingCandidates(raw, segments(raw)) {
             if (it == "a") listOf("甲", "乙") else emptyList()
         }!!
         assertEquals(80, match.choices.first().end)
         assertEquals("甲".repeat(80), match.candidates.first())
-        assertTrue(match.choices.count { it.end == 80 } in 2..9)
+        assertEquals(1, match.choices.count { it.end == 80 })
+        assertEquals(listOf("甲", "乙"), match.choices.drop(1).map { it.text })
+        assertTrue(match.choices.drop(1).all { it.end == 1 })
+    }
+
+    @Test fun wrongSentenceIsFollowedByLeadingWordsLongestFirstNotMoreSentences() {
+        val words = mapOf("a" to listOf("A", "Ａ"), "b" to listOf("B"), "c" to listOf("C"),
+            "d" to listOf("D"), "abc" to listOf("長詞"), "ab" to listOf("短詞", "另詞"), "cd" to listOf("尾詞"))
+        val match = ZhuyinComposition.resolveLeadingCandidates("abcd", segments("abcd")) {
+            words[it].orEmpty()
+        }!!
+        assertEquals(listOf("短詞尾詞", "長詞", "短詞", "另詞", "A", "Ａ"), match.candidates)
+        assertEquals(listOf(4, 3, 2, 2, 1, 1), match.choices.map { it.end })
+
+        val correcting = ZhuyinComposition.resolveLeadingCandidates("abcd", segments("abcd"),
+            wordByWord = true) { words[it].orEmpty() }!!
+        assertEquals(listOf("短詞", "長詞", "另詞", "A", "Ａ"), correcting.candidates)
+        assertEquals(listOf(2, 3, 2, 1, 1), correcting.choices.map { it.end })
     }
 
 }
