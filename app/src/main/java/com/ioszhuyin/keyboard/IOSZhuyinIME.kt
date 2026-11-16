@@ -1536,7 +1536,10 @@ open class IOSZhuyinIME : InputMethodService() {
         val variants = linkedSetOf<String>()
         variants.add(raw)
         variants.add(markLastSegmentAsNeutralTone(raw))
-        variants.add(stripTones(raw))
+        // Toneless lookup is for readings typed without tones. When every
+        // syllable has a tone it would match words with other tones, such as
+        // 泥污 for ㄋㄧˇㄨˋ, and let them outrank the words actually typed.
+        if (splitSegments(raw).any { !it.hasTone }) variants.add(stripTones(raw))
         variants.add(markUntonedSegmentsAsFirstTone(raw))
         return variants.filter { it.isNotEmpty() }
     }

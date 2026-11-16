@@ -130,6 +130,15 @@ class CompositionEditingDeviceTest {
         assertReading("ㄋㄧˋㄏㄠˇ", 4)
     }
 
+    @Test fun fullyTonedReadingDoesNotMatchWordsWithOtherTones() = run {
+        type("ㄋㄧˇㄨˋㄏㄨㄟˋㄌㄜ˙")
+        flush()
+        @Suppress("UNCHECKED_CAST")
+        val choices = field("candidateChoices").get(ime) as List<CandidateChoice>
+        assertEquals("你誤會了", choices.first().text)
+        assertTrue(choices.none { "泥污" in it.text || "回了" in it.text })
+    }
+
     @Test fun delayedCallbacksCannotResetTheCaretOrLoseRapidEdits() = run {
         type("ㄋㄧˇㄏㄠˇ")
         flush()
