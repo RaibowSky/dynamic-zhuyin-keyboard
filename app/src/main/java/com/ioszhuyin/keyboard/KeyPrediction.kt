@@ -37,7 +37,11 @@ internal class KeyPrediction(syllableCounts: Map<String, Double>) {
      * syllable. After a complete syllable (ㄅㄚ), the next key may extend it
      * (ㄅㄚ→ㄅㄢ is not possible, but ㄅ→ㄅㄚ is) or start the next syllable.
      */
-    fun priors(syllablePrefix: String): Map<String, Double> {
+    fun priors(syllablePrefix: String): Map<String, Double> = rawPriors(syllablePrefix)
+        // Any key that forms a real syllable is plausible, however rare (ㄍ→ㄟ for 給).
+        .mapValues { maxOf(it.value, PredictiveHitTesting.PRIOR_FLOOR) }
+
+    private fun rawPriors(syllablePrefix: String): Map<String, Double> {
         val start = normalized(next[""])
         if (syllablePrefix.isEmpty()) return start
         val continuation = normalized(next[syllablePrefix])
@@ -77,15 +81,17 @@ internal class KeyPrediction(syllableCounts: Map<String, Double>) {
 }
 
 /**
- * Resolves a tap among Zhuyin keys like a hidden, predictive target resize:
- * the keyboard looks the same, but near a key's edge the likelier key wins.
+ * Resolves a tap among Zhuyin keys like a hidden, predictive target resize.
+ * Deliberately conservative: only the edge of a key that cannot continue the
+ * current syllable (ㄍ then ㄩ) goes to a likely neighbor; gaps between keys
+ * go to the likelier nearby key. Plausible keys never shrink.
  */
 internal object PredictiveHitTesting {
     /** The middle of a drawn key always selects it, whatever the prediction. */
     private const val CORE_FRACTION = 0.6f
     /** Touch spread, in key widths and heights. */
     private const val SIGMA = 0.45
-    /** Unlikely keys stay reachable: no key's prior is treated as below this. */
+    /** Below this a key is treated as not continuing the syllable. */
     const val PRIOR_FLOOR = 0.01
 
     /**
@@ -97,7 +103,10 @@ internal object PredictiveHitTesting {
         for (i in boxes.indices) {
             val box = boxes[i]
             if (!box.enabled || !box.contains(x, y)) continue
-            if (priors[i] == null) return i
+            val prior = priors[i] ?: return i
+            // A key that can continue the syllable keeps its whole drawn area:
+            // moving the edges of plausible keys made the keyboard feel inconsistent.
+            if (prior >= PRIOR_FLOOR) return i
             val w = box.right - box.left
             val h = box.bottom - box.top
             val cx = (box.left + box.right) / 2f

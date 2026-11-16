@@ -42,6 +42,8 @@ class KeyPredictionTest {
         val afterB = bundled.priors("ㄅ")
         assertTrue(afterB.getValue("ㄨ") > afterB.getValue("ㄚ"))
         assertTrue("ㄩ" !in afterB)
+        // Rare but real syllables are never treated as impossible.
+        assertTrue(bundled.priors("ㄍ").getValue("ㄟ") >= PredictiveHitTesting.PRIOR_FLOOR)
     }
 }
 
@@ -54,10 +56,22 @@ class PredictiveHitTestingTest {
         assertEquals(0, PredictiveHitTesting.resolve(79f, 50f, boxes, listOf(0.0001, 0.9999)))
     }
 
-    @Test fun nearTheEdgeTheLikelierKeyWins() {
-        assertEquals(1, PredictiveHitTesting.resolve(90f, 50f, boxes, listOf(0.05, 0.95)))
-        assertEquals(0, PredictiveHitTesting.resolve(90f, 50f, boxes, listOf(0.5, 0.5)))
-        assertEquals(0, PredictiveHitTesting.resolve(110f, 50f, boxes, listOf(0.95, 0.05)))
+    @Test fun plausibleKeysKeepTheirWholeDrawnArea() {
+        assertEquals(0, PredictiveHitTesting.resolve(99f, 50f, boxes, listOf(0.02, 0.98)))
+        assertEquals(1, PredictiveHitTesting.resolve(101f, 50f, boxes, listOf(0.98, 0.02)))
+    }
+
+    @Test fun theEdgeOfAKeyThatCannotContinueGoesToALikelyNeighbor() {
+        assertEquals(1, PredictiveHitTesting.resolve(90f, 50f, boxes, listOf(0.0, 0.9)))
+        // Its middle still types it, and with no likely neighbor it stays.
+        assertEquals(0, PredictiveHitTesting.resolve(50f, 50f, boxes, listOf(0.0, 0.9)))
+        assertEquals(0, PredictiveHitTesting.resolve(90f, 50f, boxes, listOf(0.0, 0.0)))
+    }
+
+    @Test fun aGapBetweenKeysGoesToTheLikelierKey() {
+        val gapped = listOf(KeyboardHitBox(0f, 0f, 90f, 100f), KeyboardHitBox(110f, 0f, 200f, 100f))
+        assertEquals(1, PredictiveHitTesting.resolve(99f, 50f, gapped, listOf(0.1, 0.9)))
+        assertEquals(0, PredictiveHitTesting.resolve(101f, 50f, gapped, listOf(0.9, 0.1)))
     }
 
     @Test fun unweightedKeysKeepTheirDrawnArea() {
