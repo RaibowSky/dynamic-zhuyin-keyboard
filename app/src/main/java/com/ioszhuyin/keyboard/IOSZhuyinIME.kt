@@ -27,6 +27,7 @@ open class IOSZhuyinIME : InputMethodService() {
     private val composingText = StringBuilder()
     // UTF-16 offsets within the unconverted reading; -1 follows its end.
     private var composingSelectionStart = -1
+    private var correctingWordByWord = false
     private var composingSelectionEnd = -1
     private var allCandidates: List<String> = emptyList()
     private var candidateChoices: List<CandidateChoice> = emptyList()
@@ -306,6 +307,7 @@ open class IOSZhuyinIME : InputMethodService() {
 
         if (key.isEmpty()) return
         if (!synchronizePendingComposition()) return
+        correctingWordByWord = false
         val (start, end) = composingSelection()
         composingText.replace(start, end, key)
         composingSelectionStart = start + key.length
@@ -318,6 +320,7 @@ open class IOSZhuyinIME : InputMethodService() {
     private fun onToneSelected(tone: String) {
         if (composingText.isEmpty()) return
         if (!synchronizePendingComposition()) return
+        correctingWordByWord = false
         applyToneAtCaret(tone)
         showFinalPage = false
         refreshCandidates(resetSelection = true)
@@ -366,6 +369,7 @@ open class IOSZhuyinIME : InputMethodService() {
             segments = splitSegments(raw),
             preferredPrefixCandidatesForReading = ::userCandidatesForKey,
             prefixCandidatesForReading = ::prefixCandidatesForKey,
+            wordByWord = correctingWordByWord,
             candidatesForReading = ::getSortedCandidates
         )
         candidateChoices = match?.choices.orEmpty()
@@ -714,6 +718,9 @@ open class IOSZhuyinIME : InputMethodService() {
                 if (recordLearning && !choice.isProvisional) {
                     wordSelected(edit.reading, edit.committedText)
                 }
+                // Picking part of the reading means the sentence was wrong:
+                // offer the rest word by word instead of as another sentence.
+                correctingWordByWord = edit.remainingText.isNotEmpty()
                 recomputePageFromComposing()
                 refreshCandidates(
                     resetSelection = true,
@@ -750,6 +757,7 @@ open class IOSZhuyinIME : InputMethodService() {
                 }
                 editorComposingStart = -1
                 editorComposingEnd = -1
+                correctingWordByWord = edit.remainingText.isNotEmpty()
                 recomputePageFromComposing()
                 refreshCandidates(
                     resetSelection = true,
@@ -1256,6 +1264,7 @@ open class IOSZhuyinIME : InputMethodService() {
     }
 
     private fun resetToInitial() {
+        correctingWordByWord = false
         composingText.clear()
         composingSelectionStart = -1
         composingSelectionEnd = -1

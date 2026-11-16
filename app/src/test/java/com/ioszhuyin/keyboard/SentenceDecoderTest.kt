@@ -68,6 +68,11 @@ class SentenceDecoderTest {
         }!!
         assertEquals(listOf("短詞尾詞", "長詞", "短詞", "另詞", "A", "Ａ"), match.candidates)
         assertEquals(listOf(4, 3, 2, 2, 1, 1), match.choices.map { it.end })
+
+        val correcting = ZhuyinComposition.resolveLeadingCandidates("abcd", segments("abcd"),
+            wordByWord = true) { words[it].orEmpty() }!!
+        assertEquals(listOf("短詞", "長詞", "另詞", "A", "Ａ"), correcting.candidates)
+        assertEquals(listOf(2, 3, 2, 1, 1), correcting.choices.map { it.end })
     }
 
 }
