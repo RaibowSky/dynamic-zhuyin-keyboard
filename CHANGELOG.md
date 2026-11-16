@@ -2,7 +2,7 @@
 
 ## Unreleased
 
-- Return no longer breaks the line while Zhuyin is still being composed: after typing a tone, it confirms the selected candidate like 選定, and the key reads 選定 until the reading is committed.
+- Return no longer breaks the line while Zhuyin is still being composed: after typing a tone, it confirms the selected candidate like 選定, and the key reads 選定 until the reading is committed. A new switch in 字體大小、鍵盤高度與外觀 (換行鍵) restores confirming and breaking the line in one press.
 
 ## 1.3.1 (2026-10-18)
 
