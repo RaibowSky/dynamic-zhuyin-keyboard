@@ -358,7 +358,7 @@ class KeyboardTouchDeviceTest {
         assertEquals("The visible ㄆ key must remain usable", listOf("ㄆ"), typed)
     }
 
-    @Test fun predictionMovesOnlyTheEdgeBetweenNeighboringKeys() = withKeyboard { view ->
+    @Test fun predictionOnlyMovesTheEdgeOfAKeyThatCannotContinue() = withKeyboard { view ->
         val typed = mutableListOf<String>()
         view.onKeyPress = { typed += it }
         val left = key(view, "ㄅ")
@@ -377,8 +377,10 @@ class KeyboardTouchDeviceTest {
         tap(nearEdge, left.centerY())
         view.keyPriors = mapOf("ㄅ" to 0.02, right.first to 0.9)
         tap(nearEdge, left.centerY())
+        view.keyPriors = mapOf("ㄅ" to 0.0, right.first to 0.9)
+        tap(nearEdge, left.centerY())
         tap(left.centerX(), left.centerY())
-        assertEquals("Without priors the drawn key wins; near the edge the likelier key wins; the middle never moves",
-            listOf("ㄅ", right.first, "ㄅ"), typed)
+        assertEquals("A plausible key keeps its edge; an impossible key's edge goes to the likely neighbor; the middle never moves",
+            listOf("ㄅ", "ㄅ", right.first, "ㄅ"), typed)
     }
 }

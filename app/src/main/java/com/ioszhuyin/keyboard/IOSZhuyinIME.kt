@@ -564,9 +564,13 @@ open class IOSZhuyinIME : InputMethodService() {
         )
         view.setFinalPage(showFinalPage)
         view.keyPriors = if (keyPredictionEnabled && editorKeyboardMode == EditorKeyboardMode.ZHUYIN) {
-            runCatching { KeyPrediction.get(this).priors(currentSyllablePrefix()) }
-                .onFailure { Log.w(TAG, "Key prediction unavailable", it) }
-                .getOrDefault(emptyMap())
+            // At a syllable start every initial is plausible; only weigh keys
+            // once part of the syllable is typed.
+            currentSyllablePrefix().takeIf { it.isNotEmpty() }?.let { prefix ->
+                runCatching { KeyPrediction.get(this).priors(prefix) }
+                    .onFailure { Log.w(TAG, "Key prediction unavailable", it) }
+                    .getOrNull()
+            }.orEmpty()
         } else {
             emptyMap()
         }
