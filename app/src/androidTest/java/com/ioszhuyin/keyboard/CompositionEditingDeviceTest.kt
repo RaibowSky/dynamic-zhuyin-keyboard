@@ -182,7 +182,8 @@ class CompositionEditingDeviceTest {
     }
 
     @Test fun particlesAppearWhateverToneWasTyped() {
-        for ((reading, particle) in listOf("ㄇㄚˊ" to "嗎", "ㄇㄚˋ" to "嗎", "ㄇㄚˇ" to "嗎", "ㄍㄜˊ" to "個", "ㄍㄜˉ" to "個")) run {
+        for ((reading, particle) in listOf("ㄇㄚˊ" to "嗎", "ㄇㄚˋ" to "嗎", "ㄇㄚˇ" to "嗎", "ㄍㄜˊ" to "個", "ㄍㄜˉ" to "個",
+            "ㄧˊ" to "一", "ㄧˋ" to "一", "ㄅㄨˊ" to "不")) run {
             reading.forEach { type(it.toString()); flush() }
             val shown = (field("allCandidates").get(ime) as List<*>).take(4)
             assertTrue("$reading: $shown", particle in shown)

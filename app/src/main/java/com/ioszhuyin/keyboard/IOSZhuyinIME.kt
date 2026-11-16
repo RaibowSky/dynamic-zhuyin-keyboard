@@ -1802,8 +1802,13 @@ open class IOSZhuyinIME : InputMethodService() {
     companion object {
         private const val NEUTRAL_PARTICLES = 2
         private const val NEUTRAL_PARTICLE_SLOT = 2
-        /** Everyday particles and measure words, ahead of the dictionary's neutral-tone order. */
+        /**
+         * Everyday particles and measure words, ahead of the dictionary's
+         * neutral-tone order, plus 一 and 不, whose tone changes with the next
+         * syllable (一個 ㄧˊ, 一天 ㄧˋ, 不是 ㄅㄨˊ).
+         */
         private val COMMON_PARTICLES = mapOf(
+            "ㄧ" to listOf("一"), "ㄅㄨ" to listOf("不"),
             "ㄇㄚ" to listOf("嗎"), "ㄍㄜ" to listOf("個"), "ㄉㄜ" to listOf("的"),
             "ㄌㄜ" to listOf("了"), "ㄅㄚ" to listOf("吧"), "ㄋㄜ" to listOf("呢"), "ㄌㄚ" to listOf("啦")
         )
