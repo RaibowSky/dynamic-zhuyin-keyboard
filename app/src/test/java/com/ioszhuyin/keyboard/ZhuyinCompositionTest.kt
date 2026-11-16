@@ -122,8 +122,9 @@ class ZhuyinCompositionTest {
         assertEquals(raw, match?.reading)
         assertEquals("你家人", match?.candidates?.first())
         assertEquals(raw.length, match?.choices?.first()?.end)
-        assertEquals("你", match?.choices?.get(1)?.text)
-        assertEquals("ㄐㄧㄚˉㄖㄣˊ", raw.substring(match!!.choices[1].end))
+        assertEquals(listOf("你家", "你"), match?.choices?.drop(1)?.map { it.text })
+        assertEquals("ㄖㄣˊ", raw.substring(match!!.choices[1].end))
+        assertEquals("ㄐㄧㄚˉㄖㄣˊ", raw.substring(match.choices[2].end))
     }
 
     @Test
@@ -232,12 +233,13 @@ class ZhuyinCompositionTest {
 
         assertEquals(raw, match?.reading)
         assertEquals("prefixCDE", match?.candidates?.first())
-        assertEquals(listOf(5, 1), match?.choices?.take(2)?.map { it.end })
+        assertEquals(listOf("prefixCDE", "prefix", "A"), match?.candidates)
+        assertEquals(listOf(5, 2, 1), match?.choices?.map { it.end })
         assertEquals("", raw.substring(match?.end ?: 0))
     }
 
     @Test
-    fun composedCandidateBeamKeepsSecondChoiceFromEarlierSyllable() {
+    fun composedSentenceIsFollowedByChoicesForItsFirstSyllable() {
         val raw = "abc"
         val segments = raw.indices.map { index ->
             ZhuyinSegment(
@@ -257,7 +259,8 @@ class ZhuyinCompositionTest {
             }
         }
 
-        assertEquals(true, "YPL" in match?.candidates.orEmpty())
+        assertEquals(listOf("XPL", "X", "Y", "Z"), match?.candidates)
+        assertEquals(listOf(3, 1, 1, 1), match?.choices?.map { it.end })
     }
 
     @Test

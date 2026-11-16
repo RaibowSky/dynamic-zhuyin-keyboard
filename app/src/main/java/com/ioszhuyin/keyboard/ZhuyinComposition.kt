@@ -35,6 +35,7 @@ internal data class CandidateMatch(
 internal object ZhuyinComposition {
     private const val MAX_SYLLABLE_LENGTH = 3
     private const val MAX_FALLBACK_CANDIDATES = 9
+    private const val MAX_LEADING_WORD_SYLLABLES = 8
     private val toneChars = setOf('ˉ', '˙', 'ˊ', 'ˇ', 'ˋ')
 
     fun splitSegments(
@@ -113,15 +114,11 @@ internal object ZhuyinComposition {
             candidatesForReading = candidatesForReading
         )
         if (composedCandidates.isNotEmpty()) {
-            return withLeadingCharacterAlternatives(
-                match = CandidateMatch(
-                    reading = raw,
-                    candidates = composedCandidates,
-                    start = 0,
-                    end = raw.length
-                ),
+            return sentenceThenLeadingWords(
+                sentence = composedCandidates.first(),
                 raw = raw,
                 segments = segments,
+                preferredCandidates = preferredPrefixCandidatesForReading,
                 candidatesForReading = candidatesForReading
             )
         }
@@ -199,6 +196,43 @@ internal object ZhuyinComposition {
             }
         }
         return null
+    }
+
+    /**
+     * A composed sentence is offered once. If it is wrong, the rest of the list
+     * corrects it word by word from the start: the words that begin the reading,
+     * longest first, then single characters. Choosing one commits only that part
+     * and the remaining reading is composed again.
+     */
+    private fun sentenceThenLeadingWords(
+        sentence: String,
+        raw: String,
+        segments: List<ZhuyinSegment>,
+        preferredCandidates: (String) -> List<String>,
+        candidatesForReading: (String) -> List<String>
+    ): CandidateMatch {
+        val choices = mutableListOf(CandidateChoice(sentence, raw, 0, raw.length))
+        val lastWordSegment = minOf(segments.size - 1, MAX_LEADING_WORD_SYLLABLES)
+        for (count in lastWordSegment downTo 1) {
+            val end = segments[count - 1].end
+            val reading = raw.substring(0, end)
+            val normalized = (0 until count).joinToString("") { index ->
+                toneSandhiReading(segments[index], segments.getOrNull(index + 1)) ?: segments[index].text
+            }
+            val words = (preferredCandidates(reading) + candidatesForReading(normalized) +
+                if (normalized != reading) candidatesForReading(reading) else emptyList())
+                .distinct()
+                .filter { count > 1 || isSingleCodePoint(it) }
+            words.forEach { choices += CandidateChoice(it, reading, 0, end) }
+        }
+        val distinct = choices.distinctBy { Triple(it.text, it.start, it.end) }
+        return CandidateMatch(
+            reading = raw,
+            candidates = distinct.map(CandidateChoice::text),
+            start = 0,
+            end = raw.length,
+            choices = distinct
+        )
     }
 
     private fun withLeadingCharacterAlternatives(
