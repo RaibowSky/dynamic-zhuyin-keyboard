@@ -14,6 +14,7 @@ class CompositionEditingDeviceTest {
 
     private inner class Fixture {
         val ime = object : IOSZhuyinIME() {
+            init { attachBaseContext(instrumentation.targetContext) }
             override fun getCurrentInputConnection() = connection
         }
         val editor = EditText(instrumentation.targetContext).apply {
@@ -140,6 +141,33 @@ class CompositionEditingDeviceTest {
         call("handleBackspace")
         flush()
         assertReading("ㄋˇㄏㄠˇ", 2)
+    }
+
+    @Test fun returnAfterToneConfirmsWithoutBreakingTheLine() = run {
+        type("ㄋㄧˇ")
+        flush()
+        assertTrue((field("allCandidates").get(ime) as List<*>).isNotEmpty())
+        call("handleReturn")
+        flush()
+        assertEquals("", raw())
+        assertEquals("前你", editor.text.toString())
+        call("handleReturn")
+        flush()
+        assertEquals("前你\n", editor.text.toString())
+    }
+
+    @Test fun returnAfterToneCanConfirmAndBreakTheLineWhenEnabled() = run {
+        ReturnKeyOptions.setConfirmThenNewline(instrumentation.targetContext, true)
+        try {
+            type("ㄋㄧˇ")
+            flush()
+            call("handleReturn")
+            flush()
+            assertEquals("", raw())
+            assertEquals("前你\n", editor.text.toString())
+        } finally {
+            ReturnKeyOptions.setConfirmThenNewline(instrumentation.targetContext, false)
+        }
     }
 
     @Test fun leavingReadingPreservesLiteralZhuyinAndDoesNotChooseFirstCandidate() = run {

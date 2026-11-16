@@ -453,6 +453,10 @@ class ImeBehaviorTest {
             ImeBehavior.zhuyinControlLabels(showFinalPage = false, returnLabel = "搜尋")
         )
         assertEquals(
+            listOf("123", "ABC", "空白", "選定"),
+            ImeBehavior.zhuyinControlLabels(showFinalPage = false, returnLabel = "搜尋", composing = true)
+        )
+        assertEquals(
             listOf("123", "ABC", "一聲", "選定"),
             ImeBehavior.zhuyinControlLabels(showFinalPage = true)
         )

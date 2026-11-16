@@ -81,6 +81,14 @@ class ZhuyinKeyboardView @JvmOverloads constructor(
     }
     fun getMode(): Mode = mode
 
+    /** False when the user opted into Return confirming the reading and then breaking the line. */
+    var returnConfirmsComposition: Boolean = true
+        set(value) {
+            if (field == value) return
+            field = value
+            refresh()
+        }
+
     fun setReturnKeyLabel(label: String) {
         if (returnKeyLabel == label) return
         returnKeyLabel = label
@@ -464,7 +472,8 @@ class ZhuyinKeyboardView @JvmOverloads constructor(
                     ControlAction.SPACE, ControlAction.RETURN),
                 ImeBehavior.zhuyinControlLabels(
                     showFinalPage = false,
-                    returnLabel = returnKeyLabel
+                    returnLabel = returnKeyLabel,
+                    composing = composingActive && returnConfirmsComposition
                 )
             )
             mode == Mode.ENGLISH || mode == Mode.EMOJI -> if (zhuyinModeAllowed) {

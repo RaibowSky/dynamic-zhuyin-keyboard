@@ -751,6 +751,7 @@ class MainActivity : AppCompatActivity() {
             addView(metricSlider("候選列高度", KeyboardMetrics.KEY_CANDIDATE_BAR_HEIGHT, 24f, 64f))
             addView(metricSlider("候選字大小", KeyboardMetrics.KEY_CANDIDATE_FONT_SIZE, 14f, 28f))
             addView(keySoundSettings())
+            addView(returnKeySettings())
         }
     }
 
@@ -800,6 +801,25 @@ class MainActivity : AppCompatActivity() {
             addView(volume)
         }
     }
+
+    private fun returnKeySettings(): LinearLayout =
+        LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            addView(sectionTitle("換行鍵"))
+            addView(android.widget.Switch(this@MainActivity).apply {
+                text = "注音未選完時，換行鍵選字後同時換行"
+                setTextColor(palette.title)
+                isChecked = ReturnKeyOptions.confirmThenNewline(this@MainActivity)
+                setOnCheckedChangeListener { _, checked ->
+                    ReturnKeyOptions.setConfirmThenNewline(this@MainActivity, checked)
+                }
+            })
+            addView(TextView(this@MainActivity).apply {
+                text = "關閉時（預設），打完聲調後右下角顯示「選定」，按下只選字；開啟時顯示「換行」，按下選第一個候選字並換行。"
+                setTextColor(palette.status)
+                textSize = 12f
+            })
+        }
 
     private fun sectionTitle(textValue: String): TextView =
         TextView(this).apply {
