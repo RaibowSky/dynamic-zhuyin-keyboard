@@ -130,6 +130,21 @@ class CompositionEditingDeviceTest {
         assertReading("ㄋㄧˋㄏㄠˇ", 4)
     }
 
+    @Test fun toneAfterAStandaloneInitialAppliesToThatInitial() = run {
+        type("ㄔ")
+        call("onToneSelected", "ˊ")
+        flush()
+        assertReading("ㄔˊ", 3)
+    }
+
+    @Test fun toneAtCaretAfterAStandaloneInitialInsideAReadingAppliesToThatInitial() = run {
+        type("ㄔㄕˋㄇㄟˊ")
+        select(2) // after ㄔ
+        call("onToneSelected", "ˊ")
+        flush()
+        assertReading("ㄔˊㄕˋㄇㄟˊ", 3)
+    }
+
     @Test fun delayedCallbacksCannotResetTheCaretOrLoseRapidEdits() = run {
         type("ㄋㄧˇㄏㄠˇ")
         flush()

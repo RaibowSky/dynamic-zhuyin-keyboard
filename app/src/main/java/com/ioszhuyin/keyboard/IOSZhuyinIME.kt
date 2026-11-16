@@ -330,6 +330,18 @@ open class IOSZhuyinIME : InputMethodService() {
         val last = segments.firstOrNull { cursor > it.start && cursor <= it.end }
             ?: segments.firstOrNull() ?: return
 
+        // The dictionary may read "ㄔㄕ" as one untoned run; a caret right after a
+        // complete syllable such as ㄔ means the tone belongs to that syllable.
+        val baseEnd = if (last.hasTone) last.end - 1 else last.end
+        if (cursor in last.start + 1 until baseEnd &&
+            ZhuyinDictionary.isLegalBaseSyllable(composingText.substring(last.start, cursor))
+        ) {
+            composingText.insert(cursor, tone)
+            composingSelectionStart = cursor + tone.length
+            composingSelectionEnd = composingSelectionStart
+            return
+        }
+
         if (last.hasTone && last.end > last.start) {
             composingText.deleteCharAt(last.end - 1)
         }
