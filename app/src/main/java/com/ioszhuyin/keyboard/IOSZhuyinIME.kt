@@ -887,6 +887,12 @@ open class IOSZhuyinIME : InputMethodService() {
     }
 
     private fun handleReturn() {
+        // With Zhuyin still composing (e.g. after a tone sends the keyboard back
+        // to the initials page), Return confirms like 選定 and never breaks the line.
+        if (composingText.isNotEmpty()) {
+            handleCandidateConfirm()
+            return
+        }
         if (!drainComposing(recordLearning = true)) return
         lastCommittedWord = ""
         val ic = currentInputConnection ?: return

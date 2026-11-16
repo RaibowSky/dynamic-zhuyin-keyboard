@@ -464,7 +464,8 @@ class ZhuyinKeyboardView @JvmOverloads constructor(
                     ControlAction.SPACE, ControlAction.RETURN),
                 ImeBehavior.zhuyinControlLabels(
                     showFinalPage = false,
-                    returnLabel = returnKeyLabel
+                    returnLabel = returnKeyLabel,
+                    composing = composingActive
                 )
             )
             mode == Mode.ENGLISH || mode == Mode.EMOJI -> if (zhuyinModeAllowed) {

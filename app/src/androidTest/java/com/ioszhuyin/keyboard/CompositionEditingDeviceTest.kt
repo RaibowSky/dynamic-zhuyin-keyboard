@@ -142,6 +142,19 @@ class CompositionEditingDeviceTest {
         assertReading("ㄋˇㄏㄠˇ", 2)
     }
 
+    @Test fun returnAfterToneConfirmsWithoutBreakingTheLine() = run {
+        type("ㄋㄧˇ")
+        flush()
+        assertTrue((field("allCandidates").get(ime) as List<*>).isNotEmpty())
+        call("handleReturn")
+        flush()
+        assertEquals("", raw())
+        assertEquals("前你", editor.text.toString())
+        call("handleReturn")
+        flush()
+        assertEquals("前你\n", editor.text.toString())
+    }
+
     @Test fun leavingReadingPreservesLiteralZhuyinAndDoesNotChooseFirstCandidate() = run {
         type("ㄋㄧˇ")
         flush()

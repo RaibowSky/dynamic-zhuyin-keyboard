@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- Return no longer breaks the line while Zhuyin is still being composed: after typing a tone, it confirms the selected candidate like 選定, and the key reads 選定 until the reading is committed.
+
 ## 1.3.1 (2026-10-18)
 
 - Holding Backspace plays the key sound for every repeated deletion, not only the first press (when the key sound is on).
