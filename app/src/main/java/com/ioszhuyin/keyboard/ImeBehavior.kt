@@ -103,12 +103,14 @@ internal object ImeBehavior {
 
     fun zhuyinControlLabels(
         showFinalPage: Boolean,
-        returnLabel: String = "換行"
+        returnLabel: String = "換行",
+        composing: Boolean = false
     ): List<String> =
         if (showFinalPage) {
             listOf("123", "ABC", "一聲", "選定")
         } else {
-            listOf("123", "ABC", "空白", returnLabel)
+            // While Zhuyin is being composed, Return only confirms it.
+            listOf("123", "ABC", "空白", if (composing) "選定" else returnLabel)
         }
 }
 

@@ -283,6 +283,7 @@ open class IOSZhuyinIME : InputMethodService() {
 
         keyboardView = view
         view.setReturnKeyLabel(editorReturnKeyLabel)
+        view.returnConfirmsComposition = !ReturnKeyOptions.confirmThenNewline(this)
         applyEditorKeyboardMode()
         syncKeyboardView()
         applySystemTheme()
@@ -887,6 +888,13 @@ open class IOSZhuyinIME : InputMethodService() {
     }
 
     private fun handleReturn() {
+        // With Zhuyin still composing (e.g. after a tone sends the keyboard back
+        // to the initials page), Return confirms like 選定 and does not break the
+        // line unless the user turned on "confirm, then break the line".
+        if (composingText.isNotEmpty() && !ReturnKeyOptions.confirmThenNewline(this)) {
+            handleCandidateConfirm()
+            return
+        }
         if (!drainComposing(recordLearning = true)) return
         lastCommittedWord = ""
         val ic = currentInputConnection ?: return
@@ -1320,6 +1328,7 @@ open class IOSZhuyinIME : InputMethodService() {
         keyboardView?.customTypeface = KeyboardFont.load(this)
         applySystemTheme()
         keyboardView?.setReturnKeyLabel(editorReturnKeyLabel)
+        keyboardView?.returnConfirmsComposition = !ReturnKeyOptions.confirmThenNewline(this)
         if (composingText.isEmpty() && !editorCompositionPending) {
             resetToInitial()
         } else if (composingText.isEmpty()) {
