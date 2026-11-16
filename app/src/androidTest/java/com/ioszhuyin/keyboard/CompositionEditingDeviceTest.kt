@@ -199,6 +199,36 @@ class CompositionEditingDeviceTest {
         assertTrue((field("allCandidates").get(ime) as List<*>).isNotEmpty())
     }
 
+    @Test fun modelReplacesTheFirstSentenceThroughTheKeyboard() {
+        val pushed = java.io.File("/data/local/tmp/zhuyin_rerank")
+        org.junit.Assume.assumeTrue(java.io.File(pushed, RerankModelPack.MODEL).canRead())
+        ZhuyinDictionary.initialize(instrumentation.targetContext)
+        val model = CandidateReranker.open(pushed)
+        lateinit var fixture: Fixture
+        instrumentation.runOnMainSync {
+            fixture = Fixture().apply {
+                field("reranker").set(ime, model)
+                type("ㄏㄡˋㄒㄩㄢˇㄗˋㄅㄨˊㄗㄞˋㄉㄧˋㄧˉㄍㄜ˙")
+                flush()
+                @Suppress("UNCHECKED_CAST")
+                val first = (field("candidateChoices").get(ime) as List<CandidateChoice>).first().text
+                assertTrue(first, first.endsWith("的一個")) // the dictionary's own choice, shown at once
+            }
+        }
+        var first = ""
+        var waits = 0
+        while (!first.endsWith("第一個") && waits++ < 50) {
+            Thread.sleep(100)
+            instrumentation.waitForIdleSync()
+            instrumentation.runOnMainSync {
+                @Suppress("UNCHECKED_CAST")
+                first = (fixture.field("candidateChoices").get(fixture.ime) as List<CandidateChoice>).first().text
+            }
+        }
+        model.close()
+        assertTrue(first, first.endsWith("第一個"))
+    }
+
     @Test fun delayedCallbacksCannotResetTheCaretOrLoseRapidEdits() = run {
         type("ㄋㄧˇㄏㄠˇ")
         flush()

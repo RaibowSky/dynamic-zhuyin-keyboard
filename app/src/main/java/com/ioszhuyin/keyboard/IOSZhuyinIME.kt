@@ -212,6 +212,7 @@ open class IOSZhuyinIME : InputMethodService() {
     }
     @Volatile private var reranker: CandidateReranker? = null
     private var rerankerLoading = false
+    private var rerankerStamp = 0L
     @Volatile private var rerankGeneration = 0
     private var candidateAlternatives: List<String> = emptyList()
 
@@ -223,29 +224,44 @@ open class IOSZhuyinIME : InputMethodService() {
             if (old != null) rerankExecutor.execute { old.close() }
             return
         }
-        if (reranker != null || rerankerLoading) return
+        val stamp = RerankModelPack.stamp(this)
+        if ((reranker != null && stamp == rerankerStamp) || rerankerLoading) return
+        reranker?.let { old -> rerankExecutor.execute { old.close() } }
+        reranker = null
         rerankerLoading = true
         val dir = RerankModelPack.dir(this)
+        val appContext = applicationContext
         rerankExecutor.execute {
             val started = SystemClock.elapsedRealtime()
-            val loaded = runCatching { CandidateReranker.open(dir) }
-                .onFailure { Log.w(TAG, "Unable to load rerank model", it) }
-                .getOrNull()
-            Log.i(TAG, "rerank load ms=${SystemClock.elapsedRealtime() - started} ok=${loaded != null}")
+            val result = runCatching { CandidateReranker.open(dir) }
+            val ms = SystemClock.elapsedRealtime() - started
+            result.onFailure { Log.w(TAG, "Unable to load rerank model", it) }
+            Log.i(TAG, "rerank load ms=$ms ok=${result.isSuccess}")
+            RerankModelPack.setStatus(appContext, RerankModelPack.KEY_LOAD_STATUS, result.fold(
+                onSuccess = { "鍵盤已載入模型（$ms 毫秒）" },
+                onFailure = { "鍵盤載入模型失敗：${it.message ?: it.javaClass.simpleName}" }
+            ))
+            val loaded = result.getOrNull()
             mainHandler.post {
                 rerankerLoading = false
                 reranker = loaded
+                rerankerStamp = stamp
             }
         }
     }
 
-    /** Text before the reading being composed, or null when it cannot be read reliably. */
-    private fun rerankContext(): String? {
-        if (editorCompositionPending) return null
-        val ic = currentInputConnection ?: return null
-        val typed = composingText.substring(0, composingSelectionStart.coerceIn(0, composingText.length))
-        val before = ic.getTextBeforeCursor(RERANK_CONTEXT + typed.length, 0)?.toString() ?: return null
-        if (!before.endsWith(typed)) return null
+    /**
+     * Text before the reading being composed. Empty when it cannot be read
+     * reliably: the model still works without context, and must never see the
+     * zhuyin being typed as if it were preceding text.
+     */
+    private fun rerankContext(): String {
+        if (editorCompositionPending) return ""
+        val ic = currentInputConnection ?: return ""
+        val typed = composingText.substring(0, composingSelection().first)
+        val before = runCatching { ic.getTextBeforeCursor(RERANK_CONTEXT + typed.length, 0)?.toString() }
+            .getOrNull() ?: return ""
+        if (!before.endsWith(typed)) return ""
         return before.dropLast(typed.length).takeLast(RERANK_CONTEXT)
     }
 
@@ -268,15 +284,22 @@ open class IOSZhuyinIME : InputMethodService() {
         }.take(RERANK_CANDIDATES)
         val texts = if (sentences.size >= 2) sentences else group.map { choices[it].text }
         if (texts.size < 2 || syllables.size < 2) return
-        val context = rerankContext() ?: return
+        val context = rerankContext()
         val generation = ++rerankGeneration
+        val appContext = applicationContext
         rerankExecutor.execute {
             if (generation != rerankGeneration) return@execute // superseded while queued
             val started = SystemClock.elapsedRealtime()
             val order = runCatching { model.rank(context, syllables, texts) }
                 .onFailure { Log.w(TAG, "Rerank failed", it) }
                 .getOrNull()
-            Log.i(TAG, "rerank ms=${SystemClock.elapsedRealtime() - started} n=${texts.size} syllables=${syllables.size}")
+            val ms = SystemClock.elapsedRealtime() - started
+            Log.i(TAG, "rerank ms=$ms n=${texts.size} syllables=${syllables.size}")
+            RerankModelPack.setStatus(appContext, RerankModelPack.KEY_LAST_CHOICE, when {
+                order == null -> "最近一次：模型無法判斷這組候選（$ms 毫秒）"
+                order.first() == 0 -> "最近一次：從 ${texts.size} 個候選中維持「${texts[0]}」（$ms 毫秒）"
+                else -> "最近一次：從 ${texts.size} 個候選中把「${texts[0]}」換成「${texts[order.first()]}」（$ms 毫秒）"
+            })
             if (order == null || order.first() == 0) return@execute
             mainHandler.post {
                 if (generation != rerankGeneration || candidateChoices !== choices ||

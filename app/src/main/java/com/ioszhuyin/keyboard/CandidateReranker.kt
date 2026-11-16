@@ -88,6 +88,22 @@ internal object RerankModelPack {
     fun remove(context: Context) {
         dir(context).deleteRecursively()
         setEnabled(context, false)
+        setStatus(context, KEY_LOAD_STATUS, "")
+        setStatus(context, KEY_LAST_CHOICE, "")
+    }
+
+    /** Changes whenever a pack is installed, so a running keyboard reloads it. */
+    fun stamp(context: Context): Long = File(dir(context), MANIFEST).lastModified()
+
+    const val KEY_LOAD_STATUS = "load_status"
+    const val KEY_LAST_CHOICE = "last_choice"
+
+    fun status(context: Context, key: String): String =
+        context.applicationContext.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getString(key, "").orEmpty()
+
+    fun setStatus(context: Context, key: String, value: String) {
+        context.applicationContext.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+            .edit().putString(key, value).apply()
     }
 }
 

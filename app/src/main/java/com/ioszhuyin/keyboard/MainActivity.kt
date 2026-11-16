@@ -99,6 +99,7 @@ class MainActivity : AppCompatActivity() {
         if (::learningStatusText.isInitialized && ::learningToggleButton.isInitialized) {
             refreshLearningStatus()
         }
+        refreshRerankModelStatus()
     }
 
     override fun onConfigurationChanged(newConfig: Configuration) {
@@ -451,7 +452,11 @@ class MainActivity : AppCompatActivity() {
     private fun refreshRerankModelStatus() {
         val installed = RerankModelPack.installed(this)
         rerankStatus?.text = if (installed) {
-            "已安裝模型。重新開啟鍵盤後生效。"
+            listOf(
+                "已安裝模型。重新開啟鍵盤後生效。",
+                RerankModelPack.status(this, RerankModelPack.KEY_LOAD_STATUS),
+                RerankModelPack.status(this, RerankModelPack.KEY_LAST_CHOICE)
+            ).filter { it.isNotEmpty() }.joinToString("\n")
         } else {
             "未安裝。模型包（.zip）需另外下載後匯入；App 不會連網。"
         }
