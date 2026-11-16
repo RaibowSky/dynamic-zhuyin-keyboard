@@ -357,4 +357,28 @@ class KeyboardTouchDeviceTest {
         touch(view, MotionEvent.ACTION_UP, insideP)
         assertEquals("The visible ㄆ key must remain usable", listOf("ㄆ"), typed)
     }
+
+    @Test fun predictionMovesOnlyTheEdgeBetweenNeighboringKeys() = withKeyboard { view ->
+        val typed = mutableListOf<String>()
+        view.onKeyPress = { typed += it }
+        val left = key(view, "ㄅ")
+        val labels = (view.javaClass.getDeclaredField("zhuyinKeys").apply { isAccessible = true }.get(view) as List<*>)
+            .map { it!!.javaClass.getDeclaredField("label").apply { isAccessible = true }.get(it) as String }
+        val right = labels.filter { it.isNotEmpty() && it != "ㄅ" }.map { it to key(view, it) }
+            .filter { (_, r) -> r.left >= left.right - 1f && kotlin.math.abs(r.centerY() - left.centerY()) < 1f }
+            .minBy { (_, r) -> r.left }
+        fun tap(x: Float, y: Float) {
+            val point = Finger(0, x, y)
+            touch(view, MotionEvent.ACTION_DOWN, point)
+            touch(view, MotionEvent.ACTION_UP, point)
+        }
+        val nearEdge = left.right - left.width() * 0.1f
+        view.keyPriors = emptyMap()
+        tap(nearEdge, left.centerY())
+        view.keyPriors = mapOf("ㄅ" to 0.02, right.first to 0.9)
+        tap(nearEdge, left.centerY())
+        tap(left.centerX(), left.centerY())
+        assertEquals("Without priors the drawn key wins; near the edge the likelier key wins; the middle never moves",
+            listOf("ㄅ", right.first, "ㄅ"), typed)
+    }
 }
