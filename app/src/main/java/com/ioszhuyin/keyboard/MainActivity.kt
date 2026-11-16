@@ -752,6 +752,7 @@ class MainActivity : AppCompatActivity() {
             addView(metricSlider("候選字大小", KeyboardMetrics.KEY_CANDIDATE_FONT_SIZE, 14f, 28f))
             addView(keySoundSettings())
             addView(returnKeySettings())
+            addView(keyPredictionSettings())
         }
     }
 
@@ -816,6 +817,25 @@ class MainActivity : AppCompatActivity() {
             })
             addView(TextView(this@MainActivity).apply {
                 text = "關閉時（預設），打完聲調後右下角顯示「選定」，按下只選字；開啟時顯示「換行」，按下選第一個候選字並換行。"
+                setTextColor(palette.status)
+                textSize = 12f
+            })
+        }
+
+    private fun keyPredictionSettings(): LinearLayout =
+        LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            addView(sectionTitle("按鍵預測"))
+            addView(android.widget.Switch(this@MainActivity).apply {
+                text = "按在兩個注音鍵之間時，判給比較可能的那一個"
+                setTextColor(palette.title)
+                isChecked = KeyPredictionOptions.enabled(this@MainActivity)
+                setOnCheckedChangeListener { _, checked ->
+                    KeyPredictionOptions.setEnabled(this@MainActivity, checked)
+                }
+            })
+            addView(TextView(this@MainActivity).apply {
+                text = "依你正在打的注音，猜下一個最可能的鍵，暗中放大它的感應範圍，按鍵外觀不變。按在鍵的正中間一定是那個鍵。"
                 setTextColor(palette.status)
                 textSize = 12f
             })

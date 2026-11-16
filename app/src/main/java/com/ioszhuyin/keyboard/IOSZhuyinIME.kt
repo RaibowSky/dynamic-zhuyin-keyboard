@@ -563,7 +563,23 @@ open class IOSZhuyinIME : InputMethodService() {
             composing = composingText.isNotEmpty()
         )
         view.setFinalPage(showFinalPage)
+        view.keyPriors = if (keyPredictionEnabled && editorKeyboardMode == EditorKeyboardMode.ZHUYIN) {
+            runCatching { KeyPrediction.get(this).priors(currentSyllablePrefix()) }
+                .onFailure { Log.w(TAG, "Key prediction unavailable", it) }
+                .getOrDefault(emptyMap())
+        } else {
+            emptyMap()
+        }
         view.refresh()
+    }
+
+    private var keyPredictionEnabled = true
+
+    /** The untoned symbols of the syllable being typed before the caret ("" at a syllable start). */
+    private fun currentSyllablePrefix(): String {
+        val before = composingText.substring(0, composingSelection().first)
+        if (before.isEmpty() || before.last() in TONE_CHARS) return ""
+        return splitSegments(before).lastOrNull()?.takeUnless { it.hasTone }?.text.orEmpty()
     }
 
     private fun toggleCandidateExpansion() {
@@ -1329,6 +1345,7 @@ open class IOSZhuyinIME : InputMethodService() {
         applySystemTheme()
         keyboardView?.setReturnKeyLabel(editorReturnKeyLabel)
         keyboardView?.returnConfirmsComposition = !ReturnKeyOptions.confirmThenNewline(this)
+        keyPredictionEnabled = KeyPredictionOptions.enabled(this)
         if (composingText.isEmpty() && !editorCompositionPending) {
             resetToInitial()
         } else if (composingText.isEmpty()) {

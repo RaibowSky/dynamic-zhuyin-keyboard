@@ -158,6 +158,11 @@ class ZhuyinKeyboardView @JvmOverloads constructor(
     private var editTools = false
     var onCursorGestureStart: (() -> Boolean)? = null
     var onCursorMove: ((Int) -> Unit)? = null
+    /**
+     * Likelihood of each Zhuyin key being typed next. When set, a tap near a
+     * key's edge goes to the likelier neighbor; the drawn keys do not change.
+     */
+    var keyPriors: Map<String, Double> = emptyMap()
     var onReturn: (() -> Unit)? = null
     var onCandidateConfirm: (() -> Unit)? = null
     var onCandidatePress: ((Int) -> Unit)? = null
@@ -1315,6 +1320,14 @@ class ZhuyinKeyboardView @JvmOverloads constructor(
         // offset must never turn a backspace tap into a letter in the row above.
         for ((index, key) in controlKeys.withIndex()) {
             if (key.rect.contains(x, y)) return TouchTarget.ControlKey(index, key.action)
+        }
+        if (mode == Mode.ZHUYIN && keyPriors.isNotEmpty() &&
+            KeyboardHitTesting.nearestExpandedIndex(x, y, keyHitBoxes, 0f, 0f) >= 0
+        ) {
+            val weighted = PredictiveHitTesting.resolve(x, y, keyVisualBoxes, zhuyinKeys.map { key ->
+                if (key.isToggle || key.isTone || key.label.isEmpty()) null else keyPriors[key.label] ?: 0.0
+            })
+            if (weighted >= 0) return TouchTarget.ZhuyinKey(weighted, zhuyinKeys[weighted].label)
         }
         for ((index, key) in zhuyinKeys.withIndex()) {
             if (key.rect.contains(x, y)) {
