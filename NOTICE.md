@@ -84,6 +84,23 @@ its continuation to its short prefixes, and the most frequent continuations are
 kept. It is covered by the MIT notice above, which is also bundled in
 `zhuyin_cedict_LICENSE.txt`.
 
+### Noto Sans TC (Source Han Sans) keyboard font
+
+`app/src/main/assets/keyboard_sans.otf` is the default keyboard typeface, a
+reproducible subset of Noto Sans TC Regular (Google's release of the Source
+Han Sans design) with ASCII, punctuation, Bopomofo and the Han characters used
+by the bundled dictionary.
+
+- Copyright: © 2014-2021 Adobe (http://www.adobe.com/)
+- Repository: https://github.com/notofonts/noto-cjk
+- Pinned commit: `523d033d6cb47f4a80c58a35753646f5c3608a78` (tag Sans2.004)
+- Upstream file: `Sans/SubsetOTF/TC/NotoSansTC-Regular.otf`
+- Upstream SHA-256: `5bab0cb3c1cf89dde07c4a95a4054b195afbcfe784d69d75c340780712237537`
+- License: SIL Open Font License 1.1
+- Local license: `app/src/main/assets/keyboard_sans_OFL.txt`
+- Local notice: `app/src/main/assets/keyboard_sans_FONT_NOTICE.txt`
+- Rebuild script: `tools/build_keyboard_sans_font.py`
+
 ### ToneOZ Pinyin WenKai Bopomofo subset
 
 `app/src/main/assets/bopomofo.ttf` is a reproducible subset of ToneOZ Pinyin

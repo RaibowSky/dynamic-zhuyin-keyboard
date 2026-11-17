@@ -220,17 +220,7 @@ open class IOSZhuyinIME : InputMethodService() {
         migrateLegacyLearning()
         ZhuyinDictionary.initialize(this)
         ZhuyinDictionary.preloadForTyping(this, PREFIX_CANDIDATE_LIMIT)
-        bopomofoTypeface = try {
-            val outFile = File(cacheDir, "bopomofo.ttf")
-            if (!outFile.exists() || outFile.length() < 1000) {
-                assets.open("bopomofo.ttf").use { input ->
-                    outFile.outputStream().use { output -> input.copyTo(output) }
-                }
-            }
-            Typeface.createFromFile(outFile)
-        } catch (e: Exception) {
-            null
-        }
+        bopomofoTypeface = KeyboardFont.defaultTypeface(this)
     }
 
     // Experimental model reranking (off unless a model pack is imported and enabled).
@@ -380,6 +370,7 @@ open class IOSZhuyinIME : InputMethodService() {
         val view = ZhuyinKeyboardView(this)
         view.customTypeface = KeyboardFont.load(this)
         view.bopomofoTypeface = bopomofoTypeface ?: Typeface.create("sans-serif", Typeface.NORMAL)
+        view.textTypeface = KeyboardFont.defaultTypeface(this)
 
         view.onKeyPress = { key -> onZhuyinKeyPressed(key) }
         view.onBackspace = { handleBackspaceDown() }

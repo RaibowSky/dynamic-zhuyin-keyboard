@@ -779,7 +779,7 @@ class MainActivity : AppCompatActivity() {
                 setTextColor(palette.status)
                 textSize = 12f
             })
-            val previewFallback = android.graphics.Typeface.createFromAsset(assets, "bopomofo.ttf")
+            val previewFallback = KeyboardFont.defaultTypeface(this@MainActivity)
             val preview = TextView(this@MainActivity).apply {
                 text = "ㄅ ㄆ ㄇ ㄈ　ㄧ ㄨ ㄩ　ˊ ˇ ˋ ˙"
                 setTextColor(palette.title)

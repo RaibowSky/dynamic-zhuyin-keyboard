@@ -62,6 +62,20 @@ MDBG 網址僅記錄來源，重建不會下載可變動的最新版。執行
 
 `app/src/main/assets/next_word.tsv`（下一詞建議）由 `tools/build_next_word_table.py` 從同一份 `phrase.occ` 產生：每個詞語把後續字詞加到它的短前綴下，只保留最常見的接續詞。它適用上方的 MIT 授權，該授權全文也收錄在 `zhuyin_cedict_LICENSE.txt`。
 
+### 鍵盤預設字型：思源黑體（Noto Sans TC）
+
+`app/src/main/assets/keyboard_sans.otf` 是鍵盤的預設字型，由 Noto Sans TC Regular（Google 發行的思源黑體）可重現產生的 subset，包含 ASCII、標點、注音符號與內建字典用到的漢字。
+
+- 著作權：© 2014-2021 Adobe (http://www.adobe.com/)
+- 來源：https://github.com/notofonts/noto-cjk
+- 固定版本：`523d033d6cb47f4a80c58a35753646f5c3608a78`（tag Sans2.004）
+- 上游檔案：`Sans/SubsetOTF/TC/NotoSansTC-Regular.otf`
+- 上游 SHA-256：`5bab0cb3c1cf89dde07c4a95a4054b195afbcfe784d69d75c340780712237537`
+- 授權：SIL Open Font License 1.1
+- 本地授權副本：`app/src/main/assets/keyboard_sans_OFL.txt`
+- 本地來源聲明：`app/src/main/assets/keyboard_sans_FONT_NOTICE.txt`
+- 重建腳本：`tools/build_keyboard_sans_font.py`
+
 ### ToneOZ 拼音文楷注音 subset
 
 `app/src/main/assets/bopomofo.ttf` 是由 ToneOZ Pinyin WenKai Regular 可重現產生的 subset，只包含注音符號與聲調符號。
