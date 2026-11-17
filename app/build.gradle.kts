@@ -22,12 +22,17 @@ android {
     defaultConfig {
         minSdk = 24
         targetSdk = 36
-        versionCode = 6
-        versionName = "1.3.1"
+        versionCode = 7
+        versionName = "1.4.0"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
-        // Experiment: ONNX Runtime ships ~18-22 MB of native code per ABI; keep
-        // phones (arm64) and the emulator (x86_64) only.
-        ndk { abiFilters += listOf("arm64-v8a", "x86_64") }
+        // ONNX Runtime (for the optional candidate model) ships native code per
+        // ABI. Play delivers only the device's ABI; GitHub APKs drop more below.
+        ndk { abiFilters += listOf("arm64-v8a", "armeabi-v7a", "x86_64") }
+        buildConfigField("boolean", "RERANK_ENGINE", "true")
+    }
+
+    buildFeatures {
+        buildConfig = true
     }
 
     // Two permanent installation identities; see docs/RELEASING.md.
@@ -37,6 +42,13 @@ android {
             dimension = "distribution"
             isDefault = true
             applicationId = "com.ioszhuyin.keyboard"
+        }
+        // Same identity as github, without the model engine (about 40 MB smaller).
+        // The two GitHub APKs update each other and keep their data.
+        create("githubLite") {
+            dimension = "distribution"
+            applicationId = "com.ioszhuyin.keyboard"
+            buildConfigField("boolean", "RERANK_ENGINE", "false")
         }
         create("play") {
             dimension = "distribution"
@@ -83,6 +95,22 @@ android {
 
     androidResources {
         noCompress += "tsv"
+    }
+}
+
+val onnxRuntimeLibraries = listOf("**/libonnxruntime.so", "**/libonnxruntime4j_jni.so")
+androidComponents {
+    onVariants { variant ->
+        val excludes = variant.packaging.jniLibs.excludes
+        when (variant.flavorName) {
+            "githubLite" -> excludes.addAll(onnxRuntimeLibraries)
+            // The GitHub APK holds every ABI it keeps: phones are arm64 (32-bit
+            // phones use githubLite); debug builds also keep the emulator's.
+            "github" -> {
+                excludes.add("lib/armeabi-v7a/**")
+                if (variant.buildType == "release") excludes.add("lib/x86_64/**")
+            }
+        }
     }
 }
 

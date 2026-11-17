@@ -419,6 +419,14 @@ class MainActivity : AppCompatActivity() {
     private fun rerankModelSettings(): LinearLayout = LinearLayout(this).apply {
         orientation = LinearLayout.VERTICAL
         addView(sectionTitle("選字模型（實驗）"))
+        if (!BuildConfig.RERANK_ENGINE) {
+            addView(TextView(this@MainActivity).apply {
+                setTextColor(palette.status)
+                textSize = 12f
+                text = "這是一般版，不含模型引擎。想用選字模型，請到 GitHub 下載「完整版」APK 直接覆蓋安裝，設定與詞庫都會保留。"
+            })
+            return@apply
+        }
         rerankStatus = TextView(this@MainActivity).apply {
             setTextColor(palette.status)
             textSize = 12f

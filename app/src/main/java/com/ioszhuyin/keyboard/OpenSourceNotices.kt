@@ -13,6 +13,8 @@ object OpenSourceNotices {
         "SIL Open Font License 1.1（Noto Sans TC）" to "keyboard_sans_OFL.txt",
         "注音字型（ToneOZ 拼音文楷）" to "bopomofo_FONT_NOTICE.txt",
         "SIL Open Font License 1.1" to "bopomofo_OFL.txt",
+        "選字模型引擎（ONNX Runtime，MIT）" to "onnxruntime_LICENSE.txt",
+        "ONNX Runtime 第三方授權" to "onnxruntime_ThirdPartyNotices.txt",
         "Apache License 2.0" to "apache_LICENSE-2.0.txt"
     )
 

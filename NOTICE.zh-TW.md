@@ -100,6 +100,18 @@ subset 包含 U+3105-U+3129 與 U+02C7、U+02C9、U+02CA、U+02CB、U+02D9。字
 
 App 使用 AndroidX、Material Components for Android、Kotlin 標準函式庫、kotlinx.coroutines 及少數 annotation 程式庫，全部採用 Apache License 2.0。`app/src/main/assets/dependencies_NOTICE.txt` 列出 release 版實際使用的版本，並收錄上游 Kotlin 與 kotlinx.coroutines 的 NOTICE；`app/src/main/assets/apache_LICENSE-2.0.txt` 是 repository `LICENSE` 的副本。兩者都會顯示在 App 內的「開放原始碼授權」頁。依賴變更時請同步更新清單（`gradlew :app:dependencies --configuration githubReleaseRuntimeClasspath`）。
 
+### 按鍵預測的音節頻率
+
+`app/src/main/assets/zhuyin_syllable_frequency.tsv` 由 `tools/build_syllable_frequency.py` 從上述同一份 McBopomofo `phrase.occ` 與 `BPMFMappings.txt` 產生：每個詞的次數加到它讀音的各個音節上。適用上述同一份 MIT 授權。
+
+### ONNX Runtime（GitHub 完整版與 Google Play 版）
+
+選用的選字模型使用 ONNX Runtime 1.22.0（`com.microsoft.onnxruntime:onnxruntime-android`）執行，Copyright (c) Microsoft Corporation，MIT 授權（https://onnxruntime.ai）。授權與第三方聲明取自 1.22.0 官方發行套件、未經修改，打包為 `app/src/main/assets/onnxruntime_LICENSE.txt` 與 `app/src/main/assets/onnxruntime_ThirdPartyNotices.txt`，並顯示在 App 內的「開放原始碼授權」頁。GitHub 一般版（`githubLite`）不含這個引擎。
+
+### 選字模型包（另外發佈）
+
+App 本身不含任何模型。隨版本另外提供的模型包，是將 0c D512（https://huggingface.co/Funmula/0c-sequence-d512）的 4-bit `q4/` 檔案原封不動重新打包，Copyright (c) 2026 Funmula Corp Limited，MIT 授權。模型包內附該授權與 NOTICE 檔。不包含其他注音輸入法的程式碼。
+
 ## 未打包的參考資料
 
 本專案為獨立實作。

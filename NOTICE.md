@@ -84,6 +84,11 @@ its continuation to its short prefixes, and the most frequent continuations are
 kept. It is covered by the MIT notice above, which is also bundled in
 `zhuyin_cedict_LICENSE.txt`.
 
+`app/src/main/assets/zhuyin_syllable_frequency.tsv` (key-target prediction) is
+derived from the same `phrase.occ` and `BPMFMappings.txt` by
+`tools/build_syllable_frequency.py`: each word's count is added to the
+syllables of its reading. It is covered by the same MIT notice.
+
 ### Noto Sans TC (Source Han Sans) keyboard font
 
 `app/src/main/assets/keyboard_sans.otf` is the default keyboard typeface, a
@@ -136,6 +141,25 @@ NOTICE files; `app/src/main/assets/apache_LICENSE-2.0.txt` is a copy of the
 repository `LICENSE`. Both are shown on the in-app 開放原始碼授權 page. Update
 the list when dependencies change
 (`gradlew :app:dependencies --configuration githubReleaseRuntimeClasspath`).
+
+### ONNX Runtime (complete GitHub build and Google Play build)
+
+The optional candidate model runs on ONNX Runtime 1.22.0
+(`com.microsoft.onnxruntime:onnxruntime-android`), Copyright (c) Microsoft
+Corporation, MIT License (https://onnxruntime.ai). Its license and third-party
+notices, taken unmodified from the 1.22.0 release package, are bundled as
+`app/src/main/assets/onnxruntime_LICENSE.txt` and
+`app/src/main/assets/onnxruntime_ThirdPartyNotices.txt` and shown on the
+in-app 開放原始碼授權 page. The lighter `githubLite` APK leaves out the native
+engine.
+
+### Candidate model pack (distributed separately)
+
+No model is packaged in the app. The optional model pack offered with releases
+repackages, without modification, the 4-bit `q4/` files of 0c D512
+(https://huggingface.co/Funmula/0c-sequence-d512), Copyright (c) 2026 Funmula
+Corp Limited, MIT License. The pack carries that license and a NOTICE file.
+No source code of other Zhuyin input methods is included.
 
 ## Non-Bundled References
 

@@ -234,7 +234,7 @@ open class IOSZhuyinIME : InputMethodService() {
     private var candidateAlternatives: List<String> = emptyList()
 
     private fun updateReranker() {
-        val wanted = RerankModelPack.enabled(this) && RerankModelPack.installed(this)
+        val wanted = BuildConfig.RERANK_ENGINE && RerankModelPack.enabled(this) && RerankModelPack.installed(this)
         if (!wanted) {
             val old = reranker
             reranker = null
