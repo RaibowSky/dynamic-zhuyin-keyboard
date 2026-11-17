@@ -181,6 +181,25 @@ class CompositionEditingDeviceTest {
         assertTrue(choices().first().text.length <= 3)
     }
 
+    @Test fun sentencePunctuationReturnsToZhuyinLikeIos() = run {
+        val view = ZhuyinKeyboardView(instrumentation.targetContext).apply { layout(0, 0, 1080, 1800) }
+        field("keyboardView").set(ime, view)
+        for (page in listOf(ZhuyinKeyboardView.Mode.NUMBER, ZhuyinKeyboardView.Mode.SYMBOL)) {
+            for (mark in listOf("。", "，", "、", "？", "！")) {
+                if (page == ZhuyinKeyboardView.Mode.SYMBOL && mark == "、") continue
+                view.setMode(page)
+                call("handleSymbolChar", mark)
+                assertEquals("$page $mark", ZhuyinKeyboardView.Mode.ZHUYIN, view.getMode())
+            }
+        }
+        // Digits and other marks keep the page, so numbers can be typed in a row.
+        view.setMode(ZhuyinKeyboardView.Mode.NUMBER)
+        call("handleSymbolChar", "1")
+        call("handleSymbolChar", "（")
+        assertEquals(ZhuyinKeyboardView.Mode.NUMBER, view.getMode())
+        assertTrue(editor.text.toString().endsWith("1（"))
+    }
+
     @Test fun particlesAppearWhateverToneWasTyped() {
         for ((reading, particle) in listOf("ㄇㄚˊ" to "嗎", "ㄇㄚˋ" to "嗎", "ㄇㄚˇ" to "嗎", "ㄍㄜˊ" to "個", "ㄍㄜˉ" to "個",
             "ㄧˊ" to "一", "ㄧˋ" to "一", "ㄅㄨˊ" to "不")) run {

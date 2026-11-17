@@ -1161,6 +1161,14 @@ open class IOSZhuyinIME : InputMethodService() {
             currentInputConnection?.commitText(ch, 1) == true
         }
         if (!committed) return
+        val view = keyboardView
+        if (view != null && editorKeyboardMode == EditorKeyboardMode.ZHUYIN &&
+            view.getMode() in setOf(ZhuyinKeyboardView.Mode.NUMBER, ZhuyinKeyboardView.Mode.SYMBOL) &&
+            IosAuxiliaryLayout.returnsToZhuyin(ch)
+        ) {
+            view.setMode(ZhuyinKeyboardView.Mode.ZHUYIN)
+            syncKeyboardView()
+        }
         showNextWordSuggestions()
         vibrateLight()
     }
