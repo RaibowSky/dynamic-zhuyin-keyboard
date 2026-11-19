@@ -16,7 +16,7 @@
 也可直接下載 APK（v1.4.0），下載後開啟 `.apk` 安裝。兩種擇一，之後可以互相覆蓋安裝，設定與詞庫都會保留：
 
 - [一般版](https://github.com/RaibowSky/dynamic-zhuyin-keyboard/releases/download/v1.4.0/dynamic-zhuyin-1.4.0.apk)（約 20 MB）：大多數人選這個。
-- [完整版](https://github.com/RaibowSky/dynamic-zhuyin-keyboard/releases/download/v1.4.0/dynamic-zhuyin-1.4.0-full.apk)（約 40 MB，限 64 位元手機）：多了選字模型引擎。要用模型，還需另外下載[選字模型包](https://github.com/RaibowSky/dynamic-zhuyin-keyboard/releases/download/v1.4.0/dynamic-zhuyin-model-0c-q4.zip)（約 74 MB），在設定的「選字模型（實驗）」匯入。
+- [完整版](https://github.com/RaibowSky/dynamic-zhuyin-keyboard/releases/download/v1.4.0/dynamic-zhuyin-1.4.0-full.apk)（約 40 MB，限 64 位元手機）：多了選字模型引擎。要用模型，還需另外下載[選字模型包](https://github.com/RaibowSky/dynamic-zhuyin-keyboard/releases/download/v1.4.0/dynamic-zhuyin-model-0c-q4.zip)（約 74 MB），在設定的「選字模型（實驗）」匯入。模型是 Funmula 開源的 [0c 靈犀注音 D512 v2](https://huggingface.co/Funmula/0c-sequence-d512) 4-bit 版（MIT 授權），本專案只是原封不動重新打包方便匯入；本專案與 Funmula／0c 官方無關，使用上的問題請回報到本專案。
 
 [最新版本與更新說明](https://github.com/RaibowSky/dynamic-zhuyin-keyboard/releases/latest) · [安裝與舊版升級說明](#安裝)
 
@@ -117,7 +117,7 @@ Android 模擬器實際執行畫面：
 ## Roadmap 與已知限制
 
 - 1.2.0 起：長按空白左右滑動移動游標、全／半形符號、常用 Emoji、剪貼簿歷史／釘選與公開版面調整。剪貼簿歷史需自行開啟，未釘選最多 50 筆、超過 1 小時者於下次使用剪貼簿時清除；釘選不自動清除。詳見 [功能與驗證](docs/KEYBOARD-FEEDBACK.md)。
-- 整句排序採用離線詞頻順序、詞長與本機偏好，沒有網路模型。另提供小型常見接續詞與本機學習的下一詞提示，尚非完整語境預測。
+- 整句排序採用離線詞頻順序、詞長與本機偏好。1.4.0 起可選擇匯入選字模型（完整版與 Play 版，在手機上本機執行，不連網）依前文挑出最通順的句子。另提供小型常見接續詞與本機學習的下一詞提示，尚非完整語境預測。
 - 每個音節位置保留最多 9 條解碼路徑，詞邊最多 16 音節；整句長度沒有 3 音節限制。
 - 自訂字型支援 TTF／OTF（上限 20 MB）；缺字會退回內建／系統字型。系統字型清單仍待研究。
 - 裝置廠牌、較舊 Android 版本與實體裝置的持續測試仍需要回報。

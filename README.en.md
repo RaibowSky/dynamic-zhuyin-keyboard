@@ -16,7 +16,7 @@ After installation, open Dynamic Zhuyin Keyboard and use its enable-keyboard and
 You can also download the Android APK (v1.4.0) and open the downloaded `.apk` to install it. Pick one; either can later be installed over the other, keeping settings and dictionaries:
 
 - [Standard](https://github.com/RaibowSky/dynamic-zhuyin-keyboard/releases/download/v1.4.0/dynamic-zhuyin-1.4.0.apk) (about 20 MB): the right choice for most people.
-- [Complete](https://github.com/RaibowSky/dynamic-zhuyin-keyboard/releases/download/v1.4.0/dynamic-zhuyin-1.4.0-full.apk) (about 40 MB, 64-bit phones only): adds the candidate-model engine. To use a model, also download the [model pack](https://github.com/RaibowSky/dynamic-zhuyin-keyboard/releases/download/v1.4.0/dynamic-zhuyin-model-0c-q4.zip) (about 74 MB) and import it under 選字模型（實驗） in settings.
+- [Complete](https://github.com/RaibowSky/dynamic-zhuyin-keyboard/releases/download/v1.4.0/dynamic-zhuyin-1.4.0-full.apk) (about 40 MB, 64-bit phones only): adds the candidate-model engine. To use a model, also download the [model pack](https://github.com/RaibowSky/dynamic-zhuyin-keyboard/releases/download/v1.4.0/dynamic-zhuyin-model-0c-q4.zip) (about 74 MB) and import it under 選字模型（實驗） in settings. The model is the 4-bit build of Funmula's open-source [0c D512 v2](https://huggingface.co/Funmula/0c-sequence-d512) (MIT License), repackaged unmodified for import. This project is not affiliated with Funmula or 0c; please report problems here.
 
 [Latest release and release notes](https://github.com/RaibowSky/dynamic-zhuyin-keyboard/releases/latest) · [Installation and upgrades](#installation)
 
@@ -128,8 +128,9 @@ Actual Android emulator screenshots:
   full/half-width symbols, common emoji, an opt-in clipboard history panel with pins, and public layout controls.
   Unpinned clips (up to 50) older than one hour are removed the next time the clipboard is used; up to 50 pins survive automatic cleanup.
   See [features and verification](docs/KEYBOARD-FEEDBACK.md).
-- Offline sentence ranking uses frequency order, word length and local preferences;
-  no network model. Version 1.2.0 adds a small starter list and locally learned
+- Offline sentence ranking uses frequency order, word length and local preferences.
+  Since 1.4.0 an optional imported model (complete and Play builds, running on the
+  phone without network access) can pick the most natural sentence. Version 1.2.0 adds a small starter list and locally learned
   next-word suggestions, rather than comprehensive context prediction.
 - Up to nine paths per syllable position and 16 syllables per dictionary edge;
   sentence length has no three-syllable ceiling.
