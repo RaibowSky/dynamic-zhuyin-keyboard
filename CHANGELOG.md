@@ -1,17 +1,22 @@
 # Changelog
 
-## 1.4.0 (2026-11-18)
+## 1.4.0 (2026-11-19)
+
+Reported by toshine600, thank you:
+
+- 選字換行 (Return confirms the composition): Return no longer breaks the line while Zhuyin is still being composed: after typing a tone, it confirms the selected candidate like 選定, and the key reads 選定 until the reading is committed. A new switch in 字體大小、鍵盤高度與外觀 (換行鍵) restores confirming and breaking the line in one press.
+- 口語注音 (Taiwan colloquial readings): Add Taiwan pronunciations that CC-CEDICT notes as "Taiwan pr.", such as 和 under ㄏㄢˋ (551 readings, 99 new keys). They never displace a reading's existing first candidate.
+- 符號跳回注音 (punctuation returns to Zhuyin): On the number and symbol pages, 。，、？！ return to Zhuyin, like iOS.
+
+Also in this release:
 
 - Default keyboard font is now 思源黑體 (Noto Sans TC), a dictionary-sized subset bundled with the app; a custom font can still be imported.
 - Predictive key targets: when a key cannot continue the current syllable, the outer edge of that key goes to a likely neighbor, and gaps between keys go to the likelier key. Keys that can continue the syllable keep their whole drawn area. A switch 「按鍵預測」 turns it off.
 - After picking the first part of a composed sentence, the rest continues word by word, also while the last syllable has no tone yet.
 - 嗎, 個, 的, 了, 吧, 呢, 啦 appear for their syllable typed with any tone, and 一 / 不 also for their changed tones (ㄧˊ, ㄧˋ, ㄅㄨˊ).
-- On the number and symbol pages, 。，、？！ return to Zhuyin, like iOS.
 - A tone typed right after ㄔ inside a reading goes to ㄔ; a fully toned reading no longer matches words with other tones; holding space to move stays inside the reading.
 - Optional candidate model (experimental): the complete GitHub APK and the Play build can import the separately downloaded 0c D512 model pack (MIT) to choose the most natural sentence. Nothing is downloaded by the app, which still has no network permission.
 - GitHub releases now come in two APKs with the same identity: standard (`githubLite`, no model engine) and complete (`github`, arm64 only).
-- Return no longer breaks the line while Zhuyin is still being composed: after typing a tone, it confirms the selected candidate like 選定, and the key reads 選定 until the reading is committed. A new switch in 字體大小、鍵盤高度與外觀 (換行鍵) restores confirming and breaking the line in one press.
-- Add Taiwan pronunciations that CC-CEDICT notes as "Taiwan pr.", such as 和 under ㄏㄢˋ (551 readings, 99 new keys). They never displace a reading's existing first candidate.
 
 ## 1.3.1 (2026-10-18)
 
