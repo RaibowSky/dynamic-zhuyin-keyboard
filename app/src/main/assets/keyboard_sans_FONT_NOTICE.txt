@@ -1,0 +1,15 @@
+Bundled file: keyboard_sans.otf
+Family: Noto Sans TC Regular (Google's release of the Source Han Sans / 思源黑體 design)
+Copyright: © 2014-2021 Adobe (http://www.adobe.com/)
+Repository: https://github.com/notofonts/noto-cjk
+Pinned commit: 523d033d6cb47f4a80c58a35753646f5c3608a78 (tag Sans2.004)
+Upstream file: Sans/SubsetOTF/TC/NotoSansTC-Regular.otf
+Upstream SHA-256: 5bab0cb3c1cf89dde07c4a95a4054b195afbcfe784d69d75c340780712237537
+License: SIL Open Font License 1.1
+Local license copy: keyboard_sans_OFL.txt
+Transformation: The font software was modified by subsetting it to ASCII,
+common punctuation, Bopomofo with tone marks, and the Han characters used by
+the bundled dictionary, and by removing hinting, using
+tools/build_keyboard_sans_font.py and fonttools 4.63.0. Retained glyph
+outlines were not modified.
+Bundled SHA-256: 1ee1dbcc03738f5e81a2223c2337575d7658933f6543cc19044eaeec15916e9a

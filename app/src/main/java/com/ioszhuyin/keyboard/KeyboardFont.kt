@@ -84,9 +84,19 @@ internal object KeyboardFont {
         return cachedFont
     }
 
+    private const val DEFAULT_ASSET = "keyboard_sans.otf"
+    @Volatile private var defaultFace: Typeface? = null
+    private val probes = java.util.WeakHashMap<Typeface, Paint>()
+
+    /** The bundled 思源黑體 (Noto Sans TC) subset used when no font is imported. */
+    fun defaultTypeface(context: Context): Typeface = defaultFace ?: synchronized(this) {
+        defaultFace ?: runCatching { Typeface.createFromAsset(context.assets, DEFAULT_ASSET) }
+            .getOrDefault(Typeface.DEFAULT).also { defaultFace = it }
+    }
+
     fun choose(text: String, custom: Typeface?, fallback: Typeface): Typeface {
-        if (custom == null) return fallback
-        val probe = Paint().apply { typeface = custom }
+        if (custom == null || custom == fallback) return fallback
+        val probe = synchronized(probes) { probes.getOrPut(custom) { Paint().apply { typeface = custom } } }
         var offset = 0
         while (offset < text.length) {
             val end = offset + Character.charCount(text.codePointAt(offset))
@@ -97,7 +107,7 @@ internal object KeyboardFont {
     }
 
     fun preview(context: Context, custom: Typeface): CharSequence {
-        val bopomofo = Typeface.createFromAsset(context.assets, "bopomofo.ttf")
+        val bopomofo = defaultTypeface(context)
         return SpannableString(PREVIEW).apply {
             for (index in indices) {
                 val value = substring(index, index + 1)

@@ -7,11 +7,17 @@ The `distribution` flavor dimension gives two permanent installation identities:
 | Flavor | Application ID | Signed by | IME component |
 |---|---|---|---|
 | `github` | `com.ioszhuyin.keyboard` | the persistent GitHub keystore | `com.ioszhuyin.keyboard/.IOSZhuyinIME` |
+| `githubLite` | `com.ioszhuyin.keyboard` | the persistent GitHub keystore | `com.ioszhuyin.keyboard/.IOSZhuyinIME` |
 | `play` | `dynamic.zhuyin.keyboard` | Google Play app signing | `dynamic.zhuyin.keyboard/com.ioszhuyin.keyboard.IOSZhuyinIME` |
 
 The GitHub identity (package name and signing certificate) is registered in the
 Android developer console. Never change its application ID or key: existing
 installations, their enabled-IME selection and that registration depend on them.
+`github` (complete, arm64 only, includes the ONNX Runtime engine for the
+optional candidate model) and `githubLite` (standard, no engine, every ABI) are
+two builds of the same GitHub identity: either installs over the other and
+keeps its data. The Play bundle includes the engine for every ABI; Play
+delivers only the device's.
 The Play identity matches the owner's Google Play Console app. The two are
 separate apps; they can be installed side by side, do not share data and cannot
 update each other.
@@ -51,12 +57,16 @@ On Windows:
 ```powershell
 $env:ZHUYIN_SIGNING_PROPERTIES = 'C:/private/location/signing.properties'
 python tools/rebuild_dictionary.py --check
-.\gradlew.bat testGithubDebugUnitTest lintGithubDebug lintPlayDebug assembleGithubRelease bundlePlayRelease
+.\gradlew.bat testGithubDebugUnitTest lintGithubDebug lintPlayDebug assembleGithubRelease assembleGithubLiteRelease bundlePlayRelease
 ```
 
 On Linux/macOS, set the same environment variable and use `./gradlew`.
 Without signing configuration, release packaging fails. Debug CI needs no keys.
-The signed GitHub APK is `app/build/outputs/apk/github/release/app-github-release.apk`.
+The signed GitHub APKs are `app/build/outputs/apk/githubLite/release/app-githubLite-release.apk`
+(published as `dynamic-zhuyin-<version>.apk`) and
+`app/build/outputs/apk/github/release/app-github-release.apk`
+(published as `dynamic-zhuyin-<version>-full.apk`). The optional model pack is
+published beside them as `dynamic-zhuyin-model-0c-q4.zip`.
 The signed Play upload is `app/build/outputs/bundle/playRelease/app-play-release.aab`.
 Never publish a `play` APK on GitHub or upload a `github` bundle to Play.
 In Play Console open Closed testing > Alpha > Create new release and upload the

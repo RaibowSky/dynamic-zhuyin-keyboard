@@ -22,9 +22,17 @@ android {
     defaultConfig {
         minSdk = 24
         targetSdk = 36
-        versionCode = 6
-        versionName = "1.3.1"
+        versionCode = 7
+        versionName = "1.4.0"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+        // ONNX Runtime (for the optional candidate model) ships native code per
+        // ABI. Play delivers only the device's ABI; GitHub APKs drop more below.
+        ndk { abiFilters += listOf("arm64-v8a", "armeabi-v7a", "x86_64") }
+        buildConfigField("boolean", "RERANK_ENGINE", "true")
+    }
+
+    buildFeatures {
+        buildConfig = true
     }
 
     // Two permanent installation identities; see docs/RELEASING.md.
@@ -34,6 +42,13 @@ android {
             dimension = "distribution"
             isDefault = true
             applicationId = "com.ioszhuyin.keyboard"
+        }
+        // Same identity as github, without the model engine (about 40 MB smaller).
+        // The two GitHub APKs update each other and keep their data.
+        create("githubLite") {
+            dimension = "distribution"
+            applicationId = "com.ioszhuyin.keyboard"
+            buildConfigField("boolean", "RERANK_ENGINE", "false")
         }
         create("play") {
             dimension = "distribution"
@@ -83,6 +98,22 @@ android {
     }
 }
 
+val onnxRuntimeLibraries = listOf("**/libonnxruntime.so", "**/libonnxruntime4j_jni.so")
+androidComponents {
+    onVariants { variant ->
+        val excludes = variant.packaging.jniLibs.excludes
+        when (variant.flavorName) {
+            "githubLite" -> excludes.addAll(onnxRuntimeLibraries)
+            // The GitHub APK holds every ABI it keeps: phones are arm64 (32-bit
+            // phones use githubLite); debug builds also keep the emulator's.
+            "github" -> {
+                excludes.add("lib/armeabi-v7a/**")
+                if (variant.buildType == "release") excludes.add("lib/x86_64/**")
+            }
+        }
+    }
+}
+
 // Fail closed: an accidental local release must never silently use a debug key
 // or leave an unsigned APK that might be uploaded as a release.
 tasks.configureEach {
@@ -97,6 +128,8 @@ dependencies {
     implementation("androidx.appcompat:appcompat:1.6.1")
     implementation("com.google.android.material:material:1.11.0")
     implementation("androidx.constraintlayout:constraintlayout:2.1.4")
+    // Experimental candidate reranker; the model itself is imported separately.
+    implementation("com.microsoft.onnxruntime:onnxruntime-android:1.22.0")
 
     testImplementation("junit:junit:4.13.2")
     androidTestImplementation("androidx.test:runner:1.6.2")

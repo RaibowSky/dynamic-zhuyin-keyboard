@@ -13,7 +13,10 @@
 
 ### 直接下載 APK
 
-也可[下載 Android APK（v1.3.1）](https://github.com/RaibowSky/dynamic-zhuyin-keyboard/releases/download/v1.3.1/dynamic-zhuyin-1.3.1.apk)，下載後開啟 `.apk` 安裝。
+也可直接下載 APK（v1.4.0），下載後開啟 `.apk` 安裝。兩種擇一，之後可以互相覆蓋安裝，設定與詞庫都會保留：
+
+- [一般版](https://github.com/RaibowSky/dynamic-zhuyin-keyboard/releases/download/v1.4.0/dynamic-zhuyin-1.4.0.apk)（約 20 MB）：大多數人選這個。
+- [完整版](https://github.com/RaibowSky/dynamic-zhuyin-keyboard/releases/download/v1.4.0/dynamic-zhuyin-1.4.0-full.apk)（約 40 MB，限 64 位元手機）：多了選字模型引擎。要用模型，還需另外下載[選字模型包](https://github.com/RaibowSky/dynamic-zhuyin-keyboard/releases/download/v1.4.0/dynamic-zhuyin-model-0c-q4.zip)（約 74 MB），在設定的「選字模型（實驗）」匯入。
 
 [最新版本與更新說明](https://github.com/RaibowSky/dynamic-zhuyin-keyboard/releases/latest) · [安裝與舊版升級說明](#安裝)
 

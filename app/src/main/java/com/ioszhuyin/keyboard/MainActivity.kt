@@ -99,6 +99,7 @@ class MainActivity : AppCompatActivity() {
         if (::learningStatusText.isInitialized && ::learningToggleButton.isInitialized) {
             refreshLearningStatus()
         }
+        refreshRerankModelStatus()
     }
 
     override fun onConfigurationChanged(newConfig: Configuration) {
@@ -120,6 +121,7 @@ class MainActivity : AppCompatActivity() {
         val uri = data?.data ?: return
         when (requestCode) {
             REQUEST_FONT -> importFont(uri)
+            REQUEST_RERANK_MODEL -> importRerankModel(uri)
             REQUEST_IMPORT -> importDictionary(uri)
             REQUEST_EXPORT_DICTIONARY -> exportDictionary(uri, includeLearning = false)
             REQUEST_EXPORT_WITH_LEARNING -> exportDictionary(uri, includeLearning = true)
@@ -177,6 +179,7 @@ class MainActivity : AppCompatActivity() {
             }
         }, rowWeight())
         root.addView(fontRow)
+        root.addView(rerankModelSettings())
         val appearance = keyboardMetricsPanel().apply { visibility = android.view.View.GONE }
         root.addView(button("字體大小、鍵盤高度與外觀", palette.primary) {
             appearance.visibility = if (appearance.visibility == android.view.View.VISIBLE)
@@ -407,6 +410,75 @@ class MainActivity : AppCompatActivity() {
             selectedEntry = null
             statusText.text = "使用者字典：載入失敗"
             toast(it.message ?: "載入字典失敗")
+        }
+    }
+
+    private var rerankSwitch: android.widget.Switch? = null
+    private var rerankStatus: TextView? = null
+
+    private fun rerankModelSettings(): LinearLayout = LinearLayout(this).apply {
+        orientation = LinearLayout.VERTICAL
+        addView(sectionTitle("選字模型（實驗）"))
+        if (!BuildConfig.RERANK_ENGINE) {
+            addView(TextView(this@MainActivity).apply {
+                setTextColor(palette.status)
+                textSize = 12f
+                text = "這是一般版，不含模型引擎。想用選字模型，請到 GitHub 下載「完整版」APK 直接覆蓋安裝，設定與詞庫都會保留。"
+            })
+            return@apply
+        }
+        rerankStatus = TextView(this@MainActivity).apply {
+            setTextColor(palette.status)
+            textSize = 12f
+        }
+        addView(rerankStatus)
+        rerankSwitch = android.widget.Switch(this@MainActivity).apply {
+            text = "用模型依前文重排候選字"
+            setTextColor(palette.title)
+            setOnCheckedChangeListener { _, checked ->
+                RerankModelPack.setEnabled(this@MainActivity, checked)
+            }
+        }
+        addView(rerankSwitch)
+        val modelRow = row()
+        modelRow.addView(button("匯入模型包", palette.primary) {
+            startActivityForResult(Intent(Intent.ACTION_OPEN_DOCUMENT).apply {
+                addCategory(Intent.CATEGORY_OPENABLE)
+                type = "*/*"
+            }, REQUEST_RERANK_MODEL)
+        }, rowWeight())
+        modelRow.addView(button("移除模型", palette.neutral) {
+            runDictionaryTask("移除失敗", operation = { RerankModelPack.remove(this@MainActivity) }) {
+                refreshRerankModelStatus()
+                toast("已移除選字模型")
+            }
+        }, rowWeight())
+        addView(modelRow)
+        refreshRerankModelStatus()
+    }
+
+    private fun refreshRerankModelStatus() {
+        val installed = RerankModelPack.installed(this)
+        rerankStatus?.text = if (installed) {
+            listOf(
+                "已安裝模型。重新開啟鍵盤後生效。",
+                RerankModelPack.status(this, RerankModelPack.KEY_LOAD_STATUS),
+                RerankModelPack.status(this, RerankModelPack.KEY_LAST_CHOICE)
+            ).filter { it.isNotEmpty() }.joinToString("\n")
+        } else {
+            "未安裝。模型包（.zip）需另外下載後匯入；App 不會連網。"
+        }
+        rerankSwitch?.apply {
+            isEnabled = installed
+            isChecked = installed && RerankModelPack.enabled(this@MainActivity)
+        }
+    }
+
+    private fun importRerankModel(uri: Uri) {
+        runDictionaryTask("模型匯入失敗", operation = { RerankModelPack.install(this, uri) }) {
+            RerankModelPack.setEnabled(this, true)
+            refreshRerankModelStatus()
+            toast("已匯入選字模型")
         }
     }
 
@@ -715,7 +787,7 @@ class MainActivity : AppCompatActivity() {
                 setTextColor(palette.status)
                 textSize = 12f
             })
-            val previewFallback = android.graphics.Typeface.createFromAsset(assets, "bopomofo.ttf")
+            val previewFallback = KeyboardFont.defaultTypeface(this@MainActivity)
             val preview = TextView(this@MainActivity).apply {
                 text = "ㄅ ㄆ ㄇ ㄈ　ㄧ ㄨ ㄩ　ˊ ˇ ˋ ˙"
                 setTextColor(palette.title)
@@ -752,6 +824,7 @@ class MainActivity : AppCompatActivity() {
             addView(metricSlider("候選字大小", KeyboardMetrics.KEY_CANDIDATE_FONT_SIZE, 14f, 28f))
             addView(keySoundSettings())
             addView(returnKeySettings())
+            addView(keyPredictionSettings())
         }
     }
 
@@ -816,6 +889,25 @@ class MainActivity : AppCompatActivity() {
             })
             addView(TextView(this@MainActivity).apply {
                 text = "關閉時（預設），打完聲調後右下角顯示「選定」，按下只選字；開啟時顯示「換行」，按下選第一個候選字並換行。"
+                setTextColor(palette.status)
+                textSize = 12f
+            })
+        }
+
+    private fun keyPredictionSettings(): LinearLayout =
+        LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            addView(sectionTitle("按鍵預測"))
+            addView(android.widget.Switch(this@MainActivity).apply {
+                text = "按在兩個注音鍵之間時，判給比較可能的那一個"
+                setTextColor(palette.title)
+                isChecked = KeyPredictionOptions.enabled(this@MainActivity)
+                setOnCheckedChangeListener { _, checked ->
+                    KeyPredictionOptions.setEnabled(this@MainActivity, checked)
+                }
+            })
+            addView(TextView(this@MainActivity).apply {
+                text = "依你正在打的注音，猜下一個最可能的鍵，暗中放大它的感應範圍，按鍵外觀不變。按在鍵的正中間一定是那個鍵。"
                 setTextColor(palette.status)
                 textSize = 12f
             })
@@ -1018,6 +1110,7 @@ class MainActivity : AppCompatActivity() {
 
     companion object {
         private const val REQUEST_FONT = 1005
+        private const val REQUEST_RERANK_MODEL = 1006
         private const val REQUEST_IMPORT = 1001
         private const val REQUEST_EXPORT_DICTIONARY = 1002
         private const val REQUEST_EXPORT_WITH_LEARNING = 1004

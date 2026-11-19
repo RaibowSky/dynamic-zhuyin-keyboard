@@ -84,6 +84,28 @@ its continuation to its short prefixes, and the most frequent continuations are
 kept. It is covered by the MIT notice above, which is also bundled in
 `zhuyin_cedict_LICENSE.txt`.
 
+`app/src/main/assets/zhuyin_syllable_frequency.tsv` (key-target prediction) is
+derived from the same `phrase.occ` and `BPMFMappings.txt` by
+`tools/build_syllable_frequency.py`: each word's count is added to the
+syllables of its reading. It is covered by the same MIT notice.
+
+### Noto Sans TC (Source Han Sans) keyboard font
+
+`app/src/main/assets/keyboard_sans.otf` is the default keyboard typeface, a
+reproducible subset of Noto Sans TC Regular (Google's release of the Source
+Han Sans design) with ASCII, punctuation, Bopomofo and the Han characters used
+by the bundled dictionary.
+
+- Copyright: © 2014-2021 Adobe (http://www.adobe.com/)
+- Repository: https://github.com/notofonts/noto-cjk
+- Pinned commit: `523d033d6cb47f4a80c58a35753646f5c3608a78` (tag Sans2.004)
+- Upstream file: `Sans/SubsetOTF/TC/NotoSansTC-Regular.otf`
+- Upstream SHA-256: `5bab0cb3c1cf89dde07c4a95a4054b195afbcfe784d69d75c340780712237537`
+- License: SIL Open Font License 1.1
+- Local license: `app/src/main/assets/keyboard_sans_OFL.txt`
+- Local notice: `app/src/main/assets/keyboard_sans_FONT_NOTICE.txt`
+- Rebuild script: `tools/build_keyboard_sans_font.py`
+
 ### ToneOZ Pinyin WenKai Bopomofo subset
 
 `app/src/main/assets/bopomofo.ttf` is a reproducible subset of ToneOZ Pinyin
@@ -119,6 +141,25 @@ NOTICE files; `app/src/main/assets/apache_LICENSE-2.0.txt` is a copy of the
 repository `LICENSE`. Both are shown on the in-app 開放原始碼授權 page. Update
 the list when dependencies change
 (`gradlew :app:dependencies --configuration githubReleaseRuntimeClasspath`).
+
+### ONNX Runtime (complete GitHub build and Google Play build)
+
+The optional candidate model runs on ONNX Runtime 1.22.0
+(`com.microsoft.onnxruntime:onnxruntime-android`), Copyright (c) Microsoft
+Corporation, MIT License (https://onnxruntime.ai). Its license and third-party
+notices, taken unmodified from the 1.22.0 release package, are bundled as
+`app/src/main/assets/onnxruntime_LICENSE.txt` and
+`app/src/main/assets/onnxruntime_ThirdPartyNotices.txt` and shown on the
+in-app 開放原始碼授權 page. The lighter `githubLite` APK leaves out the native
+engine.
+
+### Candidate model pack (distributed separately)
+
+No model is packaged in the app. The optional model pack offered with releases
+repackages, without modification, the 4-bit `q4/` files of 0c D512
+(https://huggingface.co/Funmula/0c-sequence-d512), Copyright (c) 2026 Funmula
+Corp Limited, MIT License. The pack carries that license and a NOTICE file.
+No source code of other Zhuyin input methods is included.
 
 ## Non-Bundled References
 

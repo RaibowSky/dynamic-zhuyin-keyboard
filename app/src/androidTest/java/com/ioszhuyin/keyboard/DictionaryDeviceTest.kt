@@ -123,4 +123,13 @@ class DictionaryDeviceTest {
         Log.i("DictionaryBenchmark", "coldPrefixMs=$millis candidates=$result")
         assertTrue(result.isNotEmpty())
     }
+
+    @Test fun bundledSourceHanSansIsTheDefaultKeyboardFont() {
+        val context = androidx.test.platform.app.InstrumentationRegistry.getInstrumentation().targetContext
+        val face = KeyboardFont.defaultTypeface(context)
+        // Loaded from the asset rather than falling back to the system font.
+        org.junit.Assert.assertNotSame(android.graphics.Typeface.DEFAULT, face)
+        org.junit.Assert.assertSame(face, KeyboardFont.defaultTypeface(context))
+        context.assets.open("keyboard_sans.otf").use { org.junit.Assert.assertTrue(it.available() > 1_000_000) }
+    }
 }

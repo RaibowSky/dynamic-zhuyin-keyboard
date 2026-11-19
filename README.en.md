@@ -13,7 +13,10 @@ After installation, open Dynamic Zhuyin Keyboard and use its enable-keyboard and
 
 ### Direct APK download
 
-You can also [download the Android APK (v1.3.1)](https://github.com/RaibowSky/dynamic-zhuyin-keyboard/releases/download/v1.3.1/dynamic-zhuyin-1.3.1.apk) and open the downloaded `.apk` to install it.
+You can also download the Android APK (v1.4.0) and open the downloaded `.apk` to install it. Pick one; either can later be installed over the other, keeping settings and dictionaries:
+
+- [Standard](https://github.com/RaibowSky/dynamic-zhuyin-keyboard/releases/download/v1.4.0/dynamic-zhuyin-1.4.0.apk) (about 20 MB): the right choice for most people.
+- [Complete](https://github.com/RaibowSky/dynamic-zhuyin-keyboard/releases/download/v1.4.0/dynamic-zhuyin-1.4.0-full.apk) (about 40 MB, 64-bit phones only): adds the candidate-model engine. To use a model, also download the [model pack](https://github.com/RaibowSky/dynamic-zhuyin-keyboard/releases/download/v1.4.0/dynamic-zhuyin-model-0c-q4.zip) (about 74 MB) and import it under 選字模型（實驗） in settings.
 
 [Latest release and release notes](https://github.com/RaibowSky/dynamic-zhuyin-keyboard/releases/latest) · [Installation and upgrades](#installation)
 

@@ -9,6 +9,7 @@ import android.media.AudioManager
 import android.os.Build
 import android.os.Handler
 import android.os.Looper
+import android.os.SystemClock
 import android.os.VibrationEffect
 import android.util.Log
 import android.view.KeyEvent
@@ -16,6 +17,7 @@ import android.view.View
 import android.view.inputmethod.EditorInfo
 import android.widget.LinearLayout
 import java.io.File
+import java.util.concurrent.Executors
 
 open class IOSZhuyinIME : InputMethodService() {
 
@@ -27,6 +29,7 @@ open class IOSZhuyinIME : InputMethodService() {
     private val composingText = StringBuilder()
     // UTF-16 offsets within the unconverted reading; -1 follows its end.
     private var composingSelectionStart = -1
+    private var correctingWordByWord = false
     private var composingSelectionEnd = -1
     private var allCandidates: List<String> = emptyList()
     private var candidateChoices: List<CandidateChoice> = emptyList()
@@ -157,7 +160,39 @@ open class IOSZhuyinIME : InputMethodService() {
                 if (candidate !in merged) merged.add(candidate)
             }
         }
+        // A single syllable typed with a tone no character has (ㄖㄢˋ) still
+        // offers its other tones, so one slip does not empty the whole sentence.
+        if (merged.isEmpty() && splitSegments(raw).size == 1) {
+            ZhuyinDictionary.getCandidates(stripTones(raw))?.let(merged::addAll)
+        }
+        promoteNeutralToneParticles(raw, merged)
         return merged
+    }
+
+    /**
+     * Particles such as 嗎, 個, 的, 了 are often typed with whatever tone is
+     * nearest (ㄇㄚˋ, ㄍㄜˊ). For a single toned syllable, move its two most common
+     * neutral-tone characters up to the third and fourth slots so they are on screen.
+     */
+    private fun promoteNeutralToneParticles(raw: String, merged: MutableList<String>) {
+        val segments = splitSegments(raw)
+        if (segments.size != 1 || !raw.endsWith(segments[0].text)) return
+        val mark = raw.lastOrNull()
+        if (mark == null || mark !in TONE_CHARS || mark == '˙') return
+        val base = raw.dropLast(1)
+        val particles = (COMMON_PARTICLES[base].orEmpty() + ZhuyinDictionary.getCandidates("$base˙").orEmpty())
+            .filter { it.codePointCount(0, it.length) == 1 }
+            .distinct()
+            .take(NEUTRAL_PARTICLES)
+        if (particles.isEmpty() || merged.isEmpty()) return
+        var slot = minOf(NEUTRAL_PARTICLE_SLOT, merged.size)
+        for (particle in particles) {
+            val existing = merged.indexOf(particle)
+            if (existing in 0 until slot) continue
+            if (existing >= 0) merged.removeAt(existing)
+            merged.add(minOf(slot, merged.size), particle)
+            slot++
+        }
     }
 
     private fun prefixCandidatesForKey(raw: String): List<String> =
@@ -185,20 +220,126 @@ open class IOSZhuyinIME : InputMethodService() {
         migrateLegacyLearning()
         ZhuyinDictionary.initialize(this)
         ZhuyinDictionary.preloadForTyping(this, PREFIX_CANDIDATE_LIMIT)
-        bopomofoTypeface = try {
-            val outFile = File(cacheDir, "bopomofo.ttf")
-            if (!outFile.exists() || outFile.length() < 1000) {
-                assets.open("bopomofo.ttf").use { input ->
-                    outFile.outputStream().use { output -> input.copyTo(output) }
-                }
+        bopomofoTypeface = KeyboardFont.defaultTypeface(this)
+    }
+
+    // Experimental model reranking (off unless a model pack is imported and enabled).
+    private val rerankExecutor = Executors.newSingleThreadExecutor { task ->
+        Thread(task, "zhuyin-rerank").apply { isDaemon = true }
+    }
+    @Volatile private var reranker: CandidateReranker? = null
+    private var rerankerLoading = false
+    private var rerankerStamp = 0L
+    @Volatile private var rerankGeneration = 0
+    private var candidateAlternatives: List<String> = emptyList()
+
+    private fun updateReranker() {
+        val wanted = BuildConfig.RERANK_ENGINE && RerankModelPack.enabled(this) && RerankModelPack.installed(this)
+        if (!wanted) {
+            val old = reranker
+            reranker = null
+            if (old != null) rerankExecutor.execute { old.close() }
+            return
+        }
+        val stamp = RerankModelPack.stamp(this)
+        if ((reranker != null && stamp == rerankerStamp) || rerankerLoading) return
+        reranker?.let { old -> rerankExecutor.execute { old.close() } }
+        reranker = null
+        rerankerLoading = true
+        val dir = RerankModelPack.dir(this)
+        val appContext = applicationContext
+        rerankExecutor.execute {
+            val started = SystemClock.elapsedRealtime()
+            val result = runCatching { CandidateReranker.open(dir) }
+            val ms = SystemClock.elapsedRealtime() - started
+            result.onFailure { Log.w(TAG, "Unable to load rerank model", it) }
+            Log.i(TAG, "rerank load ms=$ms ok=${result.isSuccess}")
+            RerankModelPack.setStatus(appContext, RerankModelPack.KEY_LOAD_STATUS, result.fold(
+                onSuccess = { "鍵盤已載入模型（$ms 毫秒）" },
+                onFailure = { "鍵盤載入模型失敗：${it.message ?: it.javaClass.simpleName}" }
+            ))
+            val loaded = result.getOrNull()
+            mainHandler.post {
+                rerankerLoading = false
+                reranker = loaded
+                rerankerStamp = stamp
             }
-            Typeface.createFromFile(outFile)
-        } catch (e: Exception) {
-            null
+        }
+    }
+
+    /**
+     * Text before the reading being composed. Empty when it cannot be read
+     * reliably: the model still works without context, and must never see the
+     * zhuyin being typed as if it were preceding text.
+     */
+    private fun rerankContext(): String {
+        if (editorCompositionPending) return ""
+        val ic = currentInputConnection ?: return ""
+        val typed = composingText.substring(0, composingSelection().first)
+        val before = runCatching { ic.getTextBeforeCursor(RERANK_CONTEXT + typed.length, 0)?.toString() }
+            .getOrNull() ?: return ""
+        if (!before.endsWith(typed)) return ""
+        return before.dropLast(typed.length).takeLast(RERANK_CONTEXT)
+    }
+
+    /**
+     * Lets the model choose among whole sentences (or, for a single word, among
+     * the candidates of the same reading). The dictionary order is shown at once;
+     * the model's choice replaces it only if nothing changed while it ran and the
+     * user has not moved the selection.
+     */
+    private fun scheduleRerank() {
+        val model = reranker ?: return
+        val choices = candidateChoices
+        val first = choices.firstOrNull()?.takeUnless { it.isProvisional } ?: return
+        val raw = composingText.toString()
+        val syllables = splitSegments(raw.substring(first.start, first.end)).map { it.text }
+        val sentences = candidateAlternatives.take(RERANK_CANDIDATES)
+        val group = if (sentences.size >= 2) emptyList() else choices.indices.filter {
+            val choice = choices[it]
+            !choice.isProvisional && choice.start == first.start && choice.end == first.end
+        }.take(RERANK_CANDIDATES)
+        val texts = if (sentences.size >= 2) sentences else group.map { choices[it].text }
+        if (texts.size < 2 || syllables.size < 2) return
+        val context = rerankContext()
+        val generation = ++rerankGeneration
+        val appContext = applicationContext
+        rerankExecutor.execute {
+            if (generation != rerankGeneration) return@execute // superseded while queued
+            val started = SystemClock.elapsedRealtime()
+            val order = runCatching { model.rank(context, syllables, texts) }
+                .onFailure { Log.w(TAG, "Rerank failed", it) }
+                .getOrNull()
+            val ms = SystemClock.elapsedRealtime() - started
+            Log.i(TAG, "rerank ms=$ms n=${texts.size} syllables=${syllables.size}")
+            RerankModelPack.setStatus(appContext, RerankModelPack.KEY_LAST_CHOICE, when {
+                order == null -> "最近一次：模型無法判斷這組候選（$ms 毫秒）"
+                order.first() == 0 -> "最近一次：從 ${texts.size} 個候選中維持「${texts[0]}」（$ms 毫秒）"
+                else -> "最近一次：從 ${texts.size} 個候選中把「${texts[0]}」換成「${texts[order.first()]}」（$ms 毫秒）"
+            })
+            if (order == null || order.first() == 0) return@execute
+            mainHandler.post {
+                if (generation != rerankGeneration || candidateChoices !== choices ||
+                    composingText.toString() != raw || selectedCandidateIndex != 0
+                ) return@post
+                val reordered = choices.toMutableList()
+                if (group.isEmpty()) {
+                    reordered[0] = first.copy(text = texts[order.first()])
+                } else {
+                    order.forEachIndexed { slot, source -> reordered[group[slot]] = choices[group[source]] }
+                }
+                candidateChoices = reordered
+                allCandidates = reordered.map(CandidateChoice::text)
+                syncKeyboardView()
+            }
         }
     }
 
     override fun onDestroy() {
+        rerankGeneration++
+        reranker?.let { old -> rerankExecutor.execute { old.close() } }
+        reranker = null
+        rerankExecutor.shutdown()
         inputContainer?.closeClipboard()
         inputContainer = null
         if (::clipboardHistory.isInitialized) clipboardHistory.close()
@@ -229,6 +370,7 @@ open class IOSZhuyinIME : InputMethodService() {
         val view = ZhuyinKeyboardView(this)
         view.customTypeface = KeyboardFont.load(this)
         view.bopomofoTypeface = bopomofoTypeface ?: Typeface.create("sans-serif", Typeface.NORMAL)
+        view.textTypeface = KeyboardFont.defaultTypeface(this)
 
         view.onKeyPress = { key -> onZhuyinKeyPressed(key) }
         view.onBackspace = { handleBackspaceDown() }
@@ -265,7 +407,7 @@ open class IOSZhuyinIME : InputMethodService() {
         }
         view.onCursorMove = { steps ->
             lastCommittedWord = ""
-            moveEditingCursor(steps)
+            moveCursorWithinReading(steps)
         }
         view.onEditAction = { label -> handleEditAction(label) }
         view.onReturn = { handleReturn() }
@@ -306,6 +448,7 @@ open class IOSZhuyinIME : InputMethodService() {
 
         if (key.isEmpty()) return
         if (!synchronizePendingComposition()) return
+        correctingWordByWord = false
         val (start, end) = composingSelection()
         composingText.replace(start, end, key)
         composingSelectionStart = start + key.length
@@ -318,6 +461,7 @@ open class IOSZhuyinIME : InputMethodService() {
     private fun onToneSelected(tone: String) {
         if (composingText.isEmpty()) return
         if (!synchronizePendingComposition()) return
+        correctingWordByWord = false
         applyToneAtCaret(tone)
         showFinalPage = false
         refreshCandidates(resetSelection = true)
@@ -329,6 +473,18 @@ open class IOSZhuyinIME : InputMethodService() {
         val cursor = composingSelection().first
         val last = segments.firstOrNull { cursor > it.start && cursor <= it.end }
             ?: segments.firstOrNull() ?: return
+
+        // The dictionary may read "ㄔㄕ" as one untoned run; a caret right after a
+        // complete syllable such as ㄔ means the tone belongs to that syllable.
+        val baseEnd = if (last.hasTone) last.end - 1 else last.end
+        if (cursor in last.start + 1 until baseEnd &&
+            ZhuyinDictionary.isLegalBaseSyllable(composingText.substring(last.start, cursor))
+        ) {
+            composingText.insert(cursor, tone)
+            composingSelectionStart = cursor + tone.length
+            composingSelectionEnd = composingSelectionStart
+            return
+        }
 
         if (last.hasTone && last.end > last.start) {
             composingText.deleteCharAt(last.end - 1)
@@ -366,10 +522,13 @@ open class IOSZhuyinIME : InputMethodService() {
             segments = splitSegments(raw),
             preferredPrefixCandidatesForReading = ::userCandidatesForKey,
             prefixCandidatesForReading = ::prefixCandidatesForKey,
+            wordByWord = correctingWordByWord,
             candidatesForReading = ::getSortedCandidates
         )
         candidateChoices = match?.choices.orEmpty()
+        candidateAlternatives = match?.alternatives.orEmpty()
         allCandidates = candidateChoices.map(CandidateChoice::text)
+        if (resetSelection) scheduleRerank()
 
         selectedCandidateIndex = when {
             allCandidates.isEmpty() -> -1
@@ -563,7 +722,27 @@ open class IOSZhuyinIME : InputMethodService() {
             composing = composingText.isNotEmpty()
         )
         view.setFinalPage(showFinalPage)
+        view.keyPriors = if (keyPredictionEnabled && editorKeyboardMode == EditorKeyboardMode.ZHUYIN) {
+            // At a syllable start every initial is plausible; only weigh keys
+            // once part of the syllable is typed.
+            currentSyllablePrefix().takeIf { it.isNotEmpty() }?.let { prefix ->
+                runCatching { KeyPrediction.get(this).priors(prefix) }
+                    .onFailure { Log.w(TAG, "Key prediction unavailable", it) }
+                    .getOrNull()
+            }.orEmpty()
+        } else {
+            emptyMap()
+        }
         view.refresh()
+    }
+
+    private var keyPredictionEnabled = true
+
+    /** The untoned symbols of the syllable being typed before the caret ("" at a syllable start). */
+    private fun currentSyllablePrefix(): String {
+        val before = composingText.substring(0, composingSelection().first)
+        if (before.isEmpty() || before.last() in TONE_CHARS) return ""
+        return splitSegments(before).lastOrNull()?.takeUnless { it.hasTone }?.text.orEmpty()
     }
 
     private fun toggleCandidateExpansion() {
@@ -714,6 +893,9 @@ open class IOSZhuyinIME : InputMethodService() {
                 if (recordLearning && !choice.isProvisional) {
                     wordSelected(edit.reading, edit.committedText)
                 }
+                // Picking part of the reading means the sentence was wrong:
+                // offer the rest word by word instead of as another sentence.
+                correctingWordByWord = edit.remainingText.isNotEmpty()
                 recomputePageFromComposing()
                 refreshCandidates(
                     resetSelection = true,
@@ -750,6 +932,7 @@ open class IOSZhuyinIME : InputMethodService() {
                 }
                 editorComposingStart = -1
                 editorComposingEnd = -1
+                correctingWordByWord = edit.remainingText.isNotEmpty()
                 recomputePageFromComposing()
                 refreshCandidates(
                     resetSelection = true,
@@ -978,6 +1161,14 @@ open class IOSZhuyinIME : InputMethodService() {
             currentInputConnection?.commitText(ch, 1) == true
         }
         if (!committed) return
+        val view = keyboardView
+        if (view != null && editorKeyboardMode == EditorKeyboardMode.ZHUYIN &&
+            view.getMode() in setOf(ZhuyinKeyboardView.Mode.NUMBER, ZhuyinKeyboardView.Mode.SYMBOL) &&
+            IosAuxiliaryLayout.returnsToZhuyin(ch)
+        ) {
+            view.setMode(ZhuyinKeyboardView.Mode.ZHUYIN)
+            syncKeyboardView()
+        }
         showNextWordSuggestions()
         vibrateLight()
     }
@@ -1084,6 +1275,22 @@ open class IOSZhuyinIME : InputMethodService() {
             if (!finishRawCompositionForEditing()) return false
             return safeEditorOperation("cursor movement") { CursorNavigation.move(connection, steps) }
         }
+        return setCompositionSelection(target, target)
+    }
+
+    /**
+     * Space-bar dragging stays inside the reading: overshooting its first or
+     * last position stops there instead of committing the zhuyin as text.
+     * The ◀ ▶ edit keys still leave the reading.
+     */
+    private fun moveCursorWithinReading(steps: Int): Boolean {
+        if (composingText.isEmpty()) return moveEditingCursor(steps)
+        if (!synchronizePendingComposition()) return false
+        if (steps == 0) return true
+        val (start, end) = composingSelection()
+        val anchor = if (steps > 0) end else start
+        val target = (anchor + steps.coerceIn(-64, 64)).coerceIn(0, composingText.length)
+        if (start == end && target == start) return true
         return setCompositionSelection(target, target)
     }
 
@@ -1256,6 +1463,7 @@ open class IOSZhuyinIME : InputMethodService() {
     }
 
     private fun resetToInitial() {
+        correctingWordByWord = false
         composingText.clear()
         composingSelectionStart = -1
         composingSelectionEnd = -1
@@ -1329,6 +1537,8 @@ open class IOSZhuyinIME : InputMethodService() {
         applySystemTheme()
         keyboardView?.setReturnKeyLabel(editorReturnKeyLabel)
         keyboardView?.returnConfirmsComposition = !ReturnKeyOptions.confirmThenNewline(this)
+        updateReranker()
+        keyPredictionEnabled = KeyPredictionOptions.enabled(this)
         if (composingText.isEmpty() && !editorCompositionPending) {
             resetToInitial()
         } else if (composingText.isEmpty()) {
@@ -1536,7 +1746,10 @@ open class IOSZhuyinIME : InputMethodService() {
         val variants = linkedSetOf<String>()
         variants.add(raw)
         variants.add(markLastSegmentAsNeutralTone(raw))
-        variants.add(stripTones(raw))
+        // Toneless lookup is for readings typed without tones. When every
+        // syllable has a tone it would match words with other tones, such as
+        // 泥污 for ㄋㄧˇㄨˋ, and let them outrank the words actually typed.
+        if (splitSegments(raw).any { !it.hasTone }) variants.add(stripTones(raw))
         variants.add(markUntonedSegmentsAsFirstTone(raw))
         return variants.filter { it.isNotEmpty() }
     }
@@ -1586,7 +1799,21 @@ open class IOSZhuyinIME : InputMethodService() {
     }
 
     companion object {
+        private const val NEUTRAL_PARTICLES = 2
+        private const val NEUTRAL_PARTICLE_SLOT = 2
+        /**
+         * Everyday particles and measure words, ahead of the dictionary's
+         * neutral-tone order, plus 一 and 不, whose tone changes with the next
+         * syllable (一個 ㄧˊ, 一天 ㄧˋ, 不是 ㄅㄨˊ).
+         */
+        private val COMMON_PARTICLES = mapOf(
+            "ㄧ" to listOf("一"), "ㄅㄨ" to listOf("不"),
+            "ㄇㄚ" to listOf("嗎"), "ㄍㄜ" to listOf("個"), "ㄉㄜ" to listOf("的"),
+            "ㄌㄜ" to listOf("了"), "ㄅㄚ" to listOf("吧"), "ㄋㄜ" to listOf("呢"), "ㄌㄚ" to listOf("啦")
+        )
         private const val TAG = "IOSZhuyinIME"
+        private const val RERANK_CONTEXT = 64
+        private const val RERANK_CANDIDATES = 8
         private const val MAX_BACKSPACE_CONTEXT = 64
         private const val PREFIX_CANDIDATE_LIMIT = 18
         private const val CANDIDATE_CACHE_CAPACITY = 128

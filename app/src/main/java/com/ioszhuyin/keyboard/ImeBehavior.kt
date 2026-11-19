@@ -319,6 +319,11 @@ internal object KeyboardHitTesting {
 }
 
 internal object IosAuxiliaryLayout {
+    /** Like iOS, these full-width marks end the trip to the number/symbol page and go back to Zhuyin. */
+    private val RETURN_TO_ZHUYIN = setOf("。", "，", "、", "？", "！")
+
+    fun returnsToZhuyin(symbol: String): Boolean = symbol in RETURN_TO_ZHUYIN
+
     val NUMBER_ROWS: List<List<String>> = listOf(
         listOf("1", "2", "3", "4", "5", "6", "7", "8", "9", "0"),
         listOf("－", "／", "：", "；", "（", "）", "＄", "＠", "「", "」"),

@@ -130,6 +130,148 @@ class CompositionEditingDeviceTest {
         assertReading("ㄋㄧˋㄏㄠˇ", 4)
     }
 
+    @Test fun toneAfterAStandaloneInitialAppliesToThatInitial() = run {
+        type("ㄔ")
+        call("onToneSelected", "ˊ")
+        flush()
+        assertReading("ㄔˊ", 3)
+    }
+
+    @Test fun toneAtCaretAfterAStandaloneInitialInsideAReadingAppliesToThatInitial() = run {
+        type("ㄔㄕˋㄇㄟˊ")
+        select(2) // after ㄔ
+        call("onToneSelected", "ˊ")
+        flush()
+        assertReading("ㄔˊㄕˋㄇㄟˊ", 3)
+    }
+
+    @Test fun pickingPartOfASentenceContinuesWordByWord() = run {
+        type("ㄨㄛˇㄍㄢˇㄐㄩㄝˊㄋㄧˇㄨˋㄏㄨㄟˋㄌㄜ˙")
+        flush()
+        @Suppress("UNCHECKED_CAST")
+        fun choices() = field("candidateChoices").get(ime) as List<CandidateChoice>
+        assertEquals(raw().length, choices().first().end) // a whole sentence first
+        val wo = choices().indexOfFirst { it.text == "我" && it.end == 3 }
+        assertTrue(wo > 0)
+        call("handleCandidatePress", wo)
+        reports.clear() // an editor reports a batch edit once, after it ends
+        report()
+        assertEquals("前我ㄍㄢˇㄐㄩㄝˊㄋㄧˇㄨˋㄏㄨㄟˋㄌㄜ˙", editor.text.toString())
+        assertEquals("ㄍㄢˇㄐㄩㄝˊㄋㄧˇㄨˋㄏㄨㄟˋㄌㄜ˙", raw())
+        assertEquals("感覺", choices().first().text)
+        assertEquals("ㄍㄢˇㄐㄩㄝˊ".length, choices().first().end)
+        type("ㄅ") // typing again returns to whole sentences
+        flush()
+        assertTrue(raw().endsWith("ㄅ"))
+        assertEquals(raw().length, choices().first().end)
+    }
+
+    @Test fun wordByWordAlsoWhileTheLastSyllableHasNoToneYet() = run {
+        @Suppress("UNCHECKED_CAST")
+        fun choices() = field("candidateChoices").get(ime) as List<CandidateChoice>
+        // Each key is reported back like a real editor before the next one.
+        "ㄙㄨㄛˇㄧˇㄓㄜˋㄧˊㄎㄨㄞˋㄕˋㄉㄧㄢˋㄋㄠˇㄘㄞˊㄧㄡˇㄅㄢˋㄈㄚ".forEach { type(it.toString()); flush() }
+        val suo = choices().indexOfFirst { it.text == "所" }
+        assertTrue(choices().map { it.text }.toString(), suo > 0)
+        call("handleCandidatePress", suo)
+        reports.clear()
+        report()
+        assertEquals("ㄧˇㄓㄜˋㄧˊㄎㄨㄞˋㄕˋㄉㄧㄢˋㄋㄠˇㄘㄞˊㄧㄡˇㄅㄢˋㄈㄚ", raw())
+        assertTrue(choices().map { it.text }.toString(), choices().first().end < raw().length)
+        assertTrue(choices().first().text.length <= 3)
+    }
+
+    @Test fun sentencePunctuationReturnsToZhuyinLikeIos() = run {
+        val view = ZhuyinKeyboardView(instrumentation.targetContext).apply { layout(0, 0, 1080, 1800) }
+        field("keyboardView").set(ime, view)
+        for (page in listOf(ZhuyinKeyboardView.Mode.NUMBER, ZhuyinKeyboardView.Mode.SYMBOL)) {
+            for (mark in listOf("。", "，", "、", "？", "！")) {
+                if (page == ZhuyinKeyboardView.Mode.SYMBOL && mark == "、") continue
+                view.setMode(page)
+                call("handleSymbolChar", mark)
+                assertEquals("$page $mark", ZhuyinKeyboardView.Mode.ZHUYIN, view.getMode())
+            }
+        }
+        // Digits and other marks keep the page, so numbers can be typed in a row.
+        view.setMode(ZhuyinKeyboardView.Mode.NUMBER)
+        call("handleSymbolChar", "1")
+        call("handleSymbolChar", "（")
+        assertEquals(ZhuyinKeyboardView.Mode.NUMBER, view.getMode())
+        assertTrue(editor.text.toString().endsWith("1（"))
+    }
+
+    @Test fun particlesAppearWhateverToneWasTyped() {
+        for ((reading, particle) in listOf("ㄇㄚˊ" to "嗎", "ㄇㄚˋ" to "嗎", "ㄇㄚˇ" to "嗎", "ㄍㄜˊ" to "個", "ㄍㄜˉ" to "個",
+            "ㄧˊ" to "一", "ㄧˋ" to "一", "ㄅㄨˊ" to "不")) run {
+            reading.forEach { type(it.toString()); flush() }
+            val shown = (field("allCandidates").get(ime) as List<*>).take(4)
+            assertTrue("$reading: $shown", particle in shown)
+        }
+    }
+
+    @Test fun fullyTonedReadingDoesNotMatchWordsWithOtherTones() = run {
+        type("ㄋㄧˇㄨˋㄏㄨㄟˋㄌㄜ˙")
+        flush()
+        @Suppress("UNCHECKED_CAST")
+        val choices = field("candidateChoices").get(ime) as List<CandidateChoice>
+        assertEquals("你誤會了", choices.first().text)
+        assertTrue(choices.none { "泥污" in it.text || "回了" in it.text })
+    }
+
+    @Test fun aSyllableWithAnUnusedToneStillLetsTheSentenceCompose() = run {
+        type("ㄖㄢˋㄨㄛˋㄕˋㄍㄢˋㄌㄧˊㄒㄧˉ") // no character reads ㄖㄢˋ
+        flush()
+        @Suppress("UNCHECKED_CAST")
+        val choices = field("candidateChoices").get(ime) as List<CandidateChoice>
+        assertTrue(choices.isNotEmpty())
+        assertEquals(raw().length, choices.first().end)
+    }
+
+    @Test fun spaceDragStopsAtTheReadingEdgesInsteadOfLeavingIt() = run {
+        type("ㄋㄧˇㄏㄠˇ")
+        flush()
+        call("moveCursorWithinReading", 3)
+        flush()
+        assertReading("ㄋㄧˇㄏㄠˇ", 7)
+        call("moveCursorWithinReading", -20)
+        flush()
+        assertReading("ㄋㄧˇㄏㄠˇ", 1)
+        call("moveCursorWithinReading", 20)
+        flush()
+        assertReading("ㄋㄧˇㄏㄠˇ", 7)
+        assertTrue((field("allCandidates").get(ime) as List<*>).isNotEmpty())
+    }
+
+    @Test fun modelReplacesTheFirstSentenceThroughTheKeyboard() {
+        val pushed = java.io.File("/data/local/tmp/zhuyin_rerank")
+        org.junit.Assume.assumeTrue(java.io.File(pushed, RerankModelPack.MODEL).canRead())
+        ZhuyinDictionary.initialize(instrumentation.targetContext)
+        val model = CandidateReranker.open(pushed)
+        lateinit var fixture: Fixture
+        instrumentation.runOnMainSync {
+            fixture = Fixture().apply {
+                field("reranker").set(ime, model)
+                type("ㄏㄡˋㄒㄩㄢˇㄗˋㄅㄨˊㄗㄞˋㄉㄧˋㄧˉㄍㄜ˙")
+                flush()
+                @Suppress("UNCHECKED_CAST")
+                val first = (field("candidateChoices").get(ime) as List<CandidateChoice>).first().text
+                assertTrue(first, first.endsWith("的一個")) // the dictionary's own choice, shown at once
+            }
+        }
+        var first = ""
+        var waits = 0
+        while (!first.endsWith("第一個") && waits++ < 50) {
+            Thread.sleep(100)
+            instrumentation.waitForIdleSync()
+            instrumentation.runOnMainSync {
+                @Suppress("UNCHECKED_CAST")
+                first = (fixture.field("candidateChoices").get(fixture.ime) as List<CandidateChoice>).first().text
+            }
+        }
+        model.close()
+        assertTrue(first, first.endsWith("第一個"))
+    }
+
     @Test fun delayedCallbacksCannotResetTheCaretOrLoseRapidEdits() = run {
         type("ㄋㄧˇㄏㄠˇ")
         flush()

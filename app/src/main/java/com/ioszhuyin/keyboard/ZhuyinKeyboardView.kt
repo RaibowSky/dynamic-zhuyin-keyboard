@@ -38,6 +38,9 @@ class ZhuyinKeyboardView @JvmOverloads constructor(
 ) : View(context, attrs) {
 
     var bopomofoTypeface: Typeface = Typeface.create("sans-serif", Typeface.NORMAL)  // 預設值, 外部可覆寫
+    /** Default face for labels and candidates (the bundled 思源黑體 subset); glyphs it lacks use the system font. */
+    var textTypeface: Typeface = Typeface.DEFAULT
+        set(value) { field = value; refresh() }
     var customTypeface: Typeface? = null
         set(value) { field = value; refresh() }
     private var metrics: KeyboardLayoutMetrics = KeyboardMetrics.current(context)
@@ -158,6 +161,11 @@ class ZhuyinKeyboardView @JvmOverloads constructor(
     private var editTools = false
     var onCursorGestureStart: (() -> Boolean)? = null
     var onCursorMove: ((Int) -> Unit)? = null
+    /**
+     * Likelihood of each Zhuyin key being typed next. When set, a tap near a
+     * key's edge goes to the likelier neighbor; the drawn keys do not change.
+     */
+    var keyPriors: Map<String, Double> = emptyMap()
     var onReturn: (() -> Unit)? = null
     var onCandidateConfirm: (() -> Unit)? = null
     var onCandidatePress: ((Int) -> Unit)? = null
@@ -782,13 +790,15 @@ class ZhuyinKeyboardView @JvmOverloads constructor(
     private var pressedControlIdx: Int = -1
     private var pressedToneIdx: Int = -1
 
+    private fun systemFallback(text: String): Typeface = KeyboardFont.choose(text, textTypeface, Typeface.DEFAULT)
+
     override fun onDraw(canvas: Canvas) {
         super.onDraw(canvas)
 
         // 設定字型
         paintKeyText.typeface = bopomofoTypeface
-        paintControlText.typeface = Typeface.DEFAULT
-        paintCandidateText.typeface = Typeface.DEFAULT
+        paintControlText.typeface = textTypeface
+        paintCandidateText.typeface = textTypeface
         paintToneText.typeface = bopomofoTypeface
 
         // 背景
@@ -809,7 +819,7 @@ class ZhuyinKeyboardView @JvmOverloads constructor(
 
         paintToolbar.color = colorControlText
         paintToolbar.textSize = dp(15f) * layoutHeightScale
-        paintToolbar.typeface = Typeface.DEFAULT
+        paintToolbar.typeface = textTypeface
         for (tool in toolKeys) {
             val selectedCategory = mode == Mode.EMOJI && tool.label == currentEmojiCategory.label
             drawRoundRect(canvas, tool.rect,
@@ -839,7 +849,7 @@ class ZhuyinKeyboardView @JvmOverloads constructor(
                     palette.candidateBackground
                 }
                 drawRoundRect(canvas, cell.rect, bg, dp(metrics.candidateCornerRadius))
-                paintCandidateText.typeface = KeyboardFont.choose(candidates[cell.candidateIndex], customTypeface, Typeface.DEFAULT)
+                paintCandidateText.typeface = KeyboardFont.choose(candidates[cell.candidateIndex], customTypeface, systemFallback(candidates[cell.candidateIndex]))
                 paintCandidateText.textSize = min(dp(metrics.candidateFontSize), candidateBarHeight * 0.8f)
                 val textFit = minOf(1f,
                     (cell.rect.width() - dp(8f)).coerceAtLeast(1f) /
@@ -899,7 +909,7 @@ class ZhuyinKeyboardView @JvmOverloads constructor(
             }
             labelPaint.color = colorKeyText
             labelPaint.typeface = if (mode == Mode.EMOJI) Typeface.DEFAULT else
-                KeyboardFont.choose(k.label, customTypeface, if (isZhuyin) bopomofoTypeface else Typeface.DEFAULT)
+                KeyboardFont.choose(k.label, customTypeface, if (isZhuyin) bopomofoTypeface else systemFallback(k.label))
             if (isZhuyin) {
                 // Fit the visible glyph, not its full-width advance / line spacing.
                 // Otherwise narrow phone keys cap the slider near its default size.
@@ -921,7 +931,7 @@ class ZhuyinKeyboardView @JvmOverloads constructor(
 
         // 控制列
         for ((i, k) in controlKeys.withIndex()) {
-            paintControlText.typeface = KeyboardFont.choose(k.label, customTypeface, Typeface.DEFAULT)
+            paintControlText.typeface = KeyboardFont.choose(k.label, customTypeface, systemFallback(k.label))
             val isPressed = (i == pressedControlIdx)
             when (k.action) {
                 ControlAction.SPACE -> {
@@ -1315,6 +1325,14 @@ class ZhuyinKeyboardView @JvmOverloads constructor(
         // offset must never turn a backspace tap into a letter in the row above.
         for ((index, key) in controlKeys.withIndex()) {
             if (key.rect.contains(x, y)) return TouchTarget.ControlKey(index, key.action)
+        }
+        if (mode == Mode.ZHUYIN && keyPriors.isNotEmpty() &&
+            KeyboardHitTesting.nearestExpandedIndex(x, y, keyHitBoxes, 0f, 0f) >= 0
+        ) {
+            val weighted = PredictiveHitTesting.resolve(x, y, keyVisualBoxes, zhuyinKeys.map { key ->
+                if (key.isToggle || key.isTone || key.label.isEmpty()) null else keyPriors[key.label] ?: 0.0
+            })
+            if (weighted >= 0) return TouchTarget.ZhuyinKey(weighted, zhuyinKeys[weighted].label)
         }
         for ((index, key) in zhuyinKeys.withIndex()) {
             if (key.rect.contains(x, y)) {
